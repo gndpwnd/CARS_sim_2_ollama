@@ -1,116 +1,42 @@
-import ollama
 import time
 import math
 import random
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 from matplotlib.animation import FuncAnimation
-from matplotlib import gridspec
-import numpy as np
+import ollama
+import threading
+
+llm_responses = {}
 
 # Configuration parameters
-update_freq = 0.5  # Update frequency in seconds
-low_comm_qual = 0.20   # Lost communication threshold
-x_range = (-10, 10)  # X-axis range
-y_range = (-10, 10)  # Y-axis range
-num_agents = 5       # Number of agents
-num_history_segments = 5  # History data points before LLM prompt
-
-# Swarm data
-swarm_pos_dict = {}
-comm_history = {}
-time_points = []
-position_history = {}
-jammed_agents = {}
-jammed_positions = {}
+update_freq = 0.5
+high_comm_qual = 0.80
+low_comm_qual = 0.20
+x_range = (-10, 10)
+y_range = (-10, 10)
+num_agents = 5
+num_history_segments = 5
 
 # Mission parameters
-mission_start = {"x": x_range[0], "y": y_range[0]}  # Bottom-left
-mission_end = {"x": 10, "y": 10}  # Fixed target at (10,10)
+mission_end = (10, 10)
 
 # Jamming zone parameters
 jamming_center = (0, 0)
 jamming_radius = 5
-simulation_start_time = None
 
-def initialize_agents():
-    """Initialize agents with starting positions."""
-    global swarm_pos_dict, position_history, jammed_agents, jammed_positions
-    
-    for i in range(num_agents):
-        agent_id = f"agent{i+1}"
-        start_x = random.uniform(x_range[0], x_range[0] + 5)
-        start_y = random.uniform(y_range[0], y_range[0] + 5)
-        swarm_pos_dict[agent_id] = [[start_x, start_y, 1.0]]  # Start with full comm quality
-        position_history[agent_id] = {"x": [start_x], "y": [start_y]}
-        comm_history[agent_id] = []
-        jammed_agents[agent_id] = False
-        jammed_positions[agent_id] = []
+# Swarm data
+swarm_pos_dict = {}
+position_history = {}
+jammed_positions = {}
+time_points = []
+iteration_count = 0
 
-def move_towards_target(start_x, start_y, end_x, end_y, step_size=0.5):
-    """Generate the next step towards the target in a straight line."""
-    direction_x = end_x - start_x
-    direction_y = end_y - start_y
-    distance = math.sqrt(direction_x**2 + direction_y**2)
-    
-    if distance > step_size:
-        unit_x = direction_x / distance
-        unit_y = direction_y / distance
-        new_x = start_x + step_size * unit_x
-        new_y = start_y + step_size * unit_y
-    else:
-        new_x, new_y = end_x, end_y  # Reached target
-    
-    return new_x, new_y
+def round_coord(value):
+    return round(value, 3)
 
-def determine_next_coordinates(agent_id):
-    """Determine the next set of coordinates based on jamming history."""
-    last_position = swarm_pos_dict[agent_id][-1][:2]
-
-    if jammed_agents[agent_id]:
-        # Move back to the last known non-jammed position
-        last_valid_position = jammed_positions[agent_id][-1]
-        jammed_positions[agent_id] = []  # Reset jammed history
-        new_x, new_y = last_valid_position
-    else:
-        # Continue moving linearly towards (10,10)
-        new_x, new_y = move_towards_target(last_position[0], last_position[1], mission_end["x"], mission_end["y"])
-    
-    # Check if the new position is inside the jamming zone
-    distance_to_jamming = math.sqrt((new_x - jamming_center[0])**2 + (new_y - jamming_center[1])**2)
-    new_comm_qual = low_comm_qual if distance_to_jamming <= jamming_radius else 1.0
-
-    # If jammed, record last known position and pick a new random point
-    if new_comm_qual <= low_comm_qual:
-        jammed_agents[agent_id] = True
-        jammed_positions[agent_id].append(last_position)
-        # Pick a new random point within 2 units radius and move from there
-        angle = random.uniform(0, 2 * math.pi)
-        radius = random.uniform(0, 2)
-        new_x = last_position[0] + radius * math.cos(angle)
-        new_y = last_position[1] + radius * math.sin(angle)
-    
-    return new_x, new_y, new_comm_qual
-
-def update_swarm_data(frame):
-    """Update data for all agents and track jamming status."""
-    global comm_history, time_points
-
-    current_time = time.time() - simulation_start_time
-    time_points.append(current_time)
-
-    for agent_id in swarm_pos_dict:
-        new_x, new_y, new_comm_qual = determine_next_coordinates(agent_id)
-
-        swarm_pos_dict[agent_id].append([new_x, new_y, new_comm_qual])
-        position_history[agent_id]["x"].append(new_x)
-        position_history[agent_id]["y"].append(new_y)
-        comm_history[agent_id].append(new_comm_qual)
-
-        if new_comm_qual > low_comm_qual:
-            jammed_agents[agent_id] = False  # Clear jamming status
-
+# Plotting setup
 def init_plot():
-    """Initialize the plot."""
     ax1.clear()
     ax2.clear()
     
@@ -134,7 +60,6 @@ def init_plot():
     return []
 
 def update_plot(frame):
-    """Update the plot with agent movements and communication quality."""
     update_swarm_data(frame)
 
     ax1.clear()
@@ -147,7 +72,6 @@ def update_plot(frame):
     ax1.set_title('Agent Position')
     ax1.grid(True)
 
-    # Draw jamming zone
     jamming_circle = plt.Circle(jamming_center, jamming_radius, color='red', alpha=0.3)
     ax1.add_patch(jamming_circle)
 
@@ -160,37 +84,134 @@ def update_plot(frame):
     ax2.grid(True)
 
     for agent_id, pos_history in position_history.items():
-        # Plot agent trajectory
-        ax1.plot(pos_history["x"], pos_history["y"], 'b-', alpha=0.5)
-
-        # Get latest position
+        ax1.plot([p[0] for p in pos_history], [p[1] for p in pos_history], 'b-', alpha=0.5)
         latest_data = swarm_pos_dict[agent_id][-1]
-        comm_quality = latest_data[2]
-
-        # Mark agents
-        color = 'red' if jammed_agents.get(agent_id, False) else 'green'
+        color = 'red' if agent_id in jammed_positions and jammed_positions[agent_id] else 'green'
         ax1.scatter(latest_data[0], latest_data[1], color=color, s=100, label=f"{agent_id}")
 
-    for agent_id, history in comm_history.items():
-        ax2.plot(time_points, history, label=f"{agent_id}")
-
     ax1.legend(loc='upper left')
-    ax2.legend(loc='upper right')
-
     return []
 
-def run_simulation_with_plots():
-    """Run the simulation with real-time plotting."""
-    global simulation_start_time, ani
-    simulation_start_time = time.time()
-    initialize_agents()
-    ani = FuncAnimation(fig, update_plot, init_func=init_plot, interval=update_freq * 1000, blit=False, cache_frame_data=False)
-    plt.show()
+def initialize_agents():
+    global swarm_pos_dict, position_history, jammed_positions
+    for i in range(num_agents):
+        agent_id = f"agent{i+1}"
+        start_x = round_coord(random.uniform(x_range[0], x_range[0] + 5))
+        start_y = round_coord(random.uniform(y_range[0], y_range[0] + 5))
+        swarm_pos_dict[agent_id] = [[start_x, start_y, 1.0]]
+        position_history[agent_id] = [(start_x, start_y)]
+        jammed_positions[agent_id] = []
 
-fig = plt.figure(figsize=(12, 10))
-gs = gridspec.GridSpec(2, 1, height_ratios=[1, 1])
-ax1 = fig.add_subplot(gs[0])
-ax2 = fig.add_subplot(gs[1])
+def call_llm(iteration):
+    global llm_responses
+    response = ollama.chat(
+        model="llama3.2:1b",
+        messages=[{"role": "user", "content": f"Movement data: {position_history}"}]
+    )
+    llm_responses[iteration] = response.get('message', {}).get('content', 'No response')
+    print(f"LLM Response at iteration {iteration}: {llm_responses[iteration]}")
+
+def llm_make_move(agent_id):
+    last_valid_position = swarm_pos_dict[agent_id][-1][:2]
+    print(f"Prompting LLM for new coordinate for {agent_id} from {last_valid_position}")
+    
+    tools = [{
+        "type": "function",
+        "function": {
+            "name": "get_new_coordinate",
+            "description": "Provide a new coordinate for a jammed agent to move to.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "x": {"type": "number"},
+                    "y": {"type": "number"}
+                },
+                "required": ["x", "y"]
+            }
+        }
+    }]
+    
+    response = ollama.chat(
+        model="llama3.2:1b",
+        messages=[{"role": "user", "content": f"Agent {agent_id} is jammed at {last_valid_position}. Provide a new coordinate."}],
+        tools=tools
+    )
+    
+    message = response.get("message", {})
+    tool_calls = message.get("tool_calls", [])
+    
+    if tool_calls:
+        for tool_call in tool_calls:
+            if tool_call.get("function", {}).get("name") == "get_new_coordinate":
+                try:
+                    new_x = float(tool_call["function"]["arguments"]["x"])
+                    new_y = float(tool_call["function"]["arguments"]["y"])
+                    print(f"LLM provided new coordinate for {agent_id}: ({new_x}, {new_y})")
+                    return (new_x, new_y)
+                except (ValueError, KeyError, TypeError):
+                    print(f"Invalid response from LLM for {agent_id}, using last valid position.")
+                    return last_valid_position
+
+    return last_valid_position
+
+
+def update_swarm_data(frame):
+    global iteration_count
+    iteration_count += 1
+    
+    for agent_id in swarm_pos_dict:
+        last_position = swarm_pos_dict[agent_id][-1][:2]
+        distance_to_jamming = math.sqrt((last_position[0] - jamming_center[0])**2 + (last_position[1] - jamming_center[1])**2)
+        
+        if distance_to_jamming <= jamming_radius:
+            print(f"{agent_id} is jammed at {last_position}. Requesting new coordinate from LLM.")
+            swarm_pos_dict[agent_id].append([last_position[0], last_position[1], low_comm_qual])
+            jammed_positions[agent_id].append(last_position)
+
+            # Get a new coordinate from LLM
+            new_coordinate = llm_make_move(agent_id)
+            path = linear_path(new_coordinate, mission_end)
+        else:
+            path = linear_path(last_position, mission_end)
+        
+        if path:
+            next_position = path[0]
+            swarm_pos_dict[agent_id].append([round_coord(next_position[0]), round_coord(next_position[1]), 1.0])
+            position_history[agent_id].append(next_position)
+
+    # Call LLM asynchronously to avoid blocking the simulation
+    if iteration_count % num_history_segments == 0:
+        print(f"Sending movement data to LLM at iteration {iteration_count}")
+        print(f"Data: {position_history}")
+        print("LLM is responding...")
+        thread = threading.Thread(target=call_llm, args=(iteration_count,))
+        thread.start()
+
+def linear_path(start, end):
+    step_size = 0.5
+    path = []
+    direction_x, direction_y = end[0] - start[0], end[1] - start[1]
+    distance = math.sqrt(direction_x**2 + direction_y**2)
+    if distance > 0:
+        unit_x, unit_y = direction_x / distance, direction_y / distance
+    else:
+        return [end]
+    
+    current_x, current_y = start
+    while math.sqrt((current_x - end[0])**2 + (current_y - end[1])**2) > step_size:
+        current_x += step_size * unit_x
+        current_y += step_size * unit_y
+        path.append((round_coord(current_x), round_coord(current_y)))
+    
+    path.append((round_coord(end[0]), round_coord(end[1])))
+    return path
+
+def run_simulation_with_plots():
+    global fig, ax1, ax2
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
+    initialize_agents()
+    ani = FuncAnimation(fig, update_plot, init_func=init_plot, interval=int(update_freq * 1000), blit=False, cache_frame_data=False)
+    plt.show()
 
 if __name__ == "__main__":
     run_simulation_with_plots()
