@@ -1,3 +1,4 @@
+import ollama
 import time
 import math
 import random
@@ -8,10 +9,9 @@ import numpy as np
 
 # Configuration parameters
 update_freq = 0.5  # Update frequency in seconds
-high_comm_qual = 0.80  # Optimal communication threshold
 low_comm_qual = 0.20   # Lost communication threshold
-x_range = (-25, 25)  # X-axis range
-y_range = (-25, 25)  # Y-axis range
+x_range = (-10, 10)  # X-axis range
+y_range = (-10, 10)  # Y-axis range
 num_agents = 5       # Number of agents
 num_history_segments = 5  # History data points before LLM prompt
 
@@ -20,10 +20,12 @@ swarm_pos_dict = {}
 comm_history = {}
 time_points = []
 position_history = {}
+jammed_agents = {}
+jammed_positions = {}
 
 # Mission parameters
 mission_start = {"x": x_range[0], "y": y_range[0]}  # Bottom-left
-mission_end = {"x": x_range[1], "y": y_range[1]}  # Top-right
+mission_end = {"x": 10, "y": 10}  # Fixed target at (10,10)
 
 # Jamming zone parameters
 jamming_center = (0, 0)
@@ -32,7 +34,7 @@ simulation_start_time = None
 
 def initialize_agents():
     """Initialize agents with starting positions."""
-    global swarm_pos_dict, position_history
+    global swarm_pos_dict, position_history, jammed_agents, jammed_positions
     
     for i in range(num_agents):
         agent_id = f"agent{i+1}"
@@ -41,76 +43,77 @@ def initialize_agents():
         swarm_pos_dict[agent_id] = [[start_x, start_y, 1.0]]  # Start with full comm quality
         position_history[agent_id] = {"x": [start_x], "y": [start_y]}
         comm_history[agent_id] = []
+        jammed_agents[agent_id] = False
+        jammed_positions[agent_id] = []
 
-def new_data_generator(agent_id):
-    """Generate new position and communication quality data for an agent."""
-    latest_data = swarm_pos_dict[agent_id][-1]
-    current_x, current_y, _ = latest_data
-    
-    # Linear movement towards (max x, max y)
-    step_size = 0.5  # Step size per update
-    direction_x = (mission_end["x"] - current_x)
-    direction_y = (mission_end["y"] - current_y)
+def move_towards_target(start_x, start_y, end_x, end_y, step_size=0.5):
+    """Generate the next step towards the target in a straight line."""
+    direction_x = end_x - start_x
+    direction_y = end_y - start_y
     distance = math.sqrt(direction_x**2 + direction_y**2)
     
-    if distance > 0:
-        new_x = current_x + step_size * (direction_x / distance)
-        new_y = current_y + step_size * (direction_y / distance)
+    if distance > step_size:
+        unit_x = direction_x / distance
+        unit_y = direction_y / distance
+        new_x = start_x + step_size * unit_x
+        new_y = start_y + step_size * unit_y
     else:
-        new_x, new_y = current_x, current_y
+        new_x, new_y = end_x, end_y  # Reached target
     
-    # Check if agent is inside the jamming zone
+    return new_x, new_y
+
+def determine_next_coordinates(agent_id):
+    """Determine the next set of coordinates based on jamming history."""
+    last_position = swarm_pos_dict[agent_id][-1][:2]
+
+    if jammed_agents[agent_id]:
+        # Move back to the last known non-jammed position
+        last_valid_position = jammed_positions[agent_id][-1]
+        jammed_positions[agent_id] = []  # Reset jammed history
+        new_x, new_y = last_valid_position
+    else:
+        # Continue moving linearly towards (10,10)
+        new_x, new_y = move_towards_target(last_position[0], last_position[1], mission_end["x"], mission_end["y"])
+    
+    # Check if the new position is inside the jamming zone
     distance_to_jamming = math.sqrt((new_x - jamming_center[0])**2 + (new_y - jamming_center[1])**2)
     new_comm_qual = low_comm_qual if distance_to_jamming <= jamming_radius else 1.0
+
+    # If jammed, record last known position and pick a new random point
+    if new_comm_qual <= low_comm_qual:
+        jammed_agents[agent_id] = True
+        jammed_positions[agent_id].append(last_position)
+        # Pick a new random point within 2 units radius and move from there
+        angle = random.uniform(0, 2 * math.pi)
+        radius = random.uniform(0, 2)
+        new_x = last_position[0] + radius * math.cos(angle)
+        new_y = last_position[1] + radius * math.sin(angle)
     
     return new_x, new_y, new_comm_qual
 
-jammed_agents = {}  # Dictionary to track jammed agents (agent_id: True/False)
-
-def update_swarm_data():
+def update_swarm_data(frame):
     """Update data for all agents and track jamming status."""
-    global comm_history, time_points, ani
+    global comm_history, time_points
 
     current_time = time.time() - simulation_start_time
     time_points.append(current_time)
 
     for agent_id in swarm_pos_dict:
-        new_x, new_y, new_comm_qual = new_data_generator(agent_id)
+        new_x, new_y, new_comm_qual = determine_next_coordinates(agent_id)
 
-        # Check if agent is inside the jamming zone
-        distance_to_jamming_zone = math.sqrt((new_x - 0)**2 + (new_y - 0)**2)
-        if distance_to_jamming_zone <= 5:
-            new_comm_qual = 0.1  # Drop communication quality if jammed
-            jammed_agents[agent_id] = True
-        else:
-            jammed_agents[agent_id] = False
-
-        # Store new data
         swarm_pos_dict[agent_id].append([new_x, new_y, new_comm_qual])
         position_history[agent_id]["x"].append(new_x)
         position_history[agent_id]["y"].append(new_y)
-
-        # Ensure comm_history exists for each agent
-        if agent_id not in comm_history:
-            comm_history[agent_id] = []
-
         comm_history[agent_id].append(new_comm_qual)
 
-        # Limit history storage
-        if len(time_points) > 100:
-            time_points.pop(0)
-            for agent in comm_history:
-                comm_history[agent] = comm_history[agent][-100:]
-            position_history[agent_id]["x"] = position_history[agent_id]["x"][-100:]
-            position_history[agent_id]["y"] = position_history[agent_id]["y"][-100:]
-
+        if new_comm_qual > low_comm_qual:
+            jammed_agents[agent_id] = False  # Clear jamming status
 
 def init_plot():
     """Initialize the plot."""
     ax1.clear()
     ax2.clear()
     
-    # Setup position plot
     ax1.set_xlim(x_range)
     ax1.set_ylim(y_range)
     ax1.set_xlabel('X Position')
@@ -118,11 +121,9 @@ def init_plot():
     ax1.set_title('Agent Position')
     ax1.grid(True)
     
-    # Jamming zone
     jamming_circle = plt.Circle(jamming_center, jamming_radius, color='red', alpha=0.3)
     ax1.add_patch(jamming_circle)
     
-    # Setup communication quality plot
     ax2.set_xlim(0, 30)
     ax2.set_ylim(0, 1)
     ax2.set_xlabel('Time (s)')
@@ -133,8 +134,8 @@ def init_plot():
     return []
 
 def update_plot(frame):
-    """Update the plot and indicate jammed agents."""
-    update_swarm_data()
+    """Update the plot with agent movements and communication quality."""
+    update_swarm_data(frame)
 
     ax1.clear()
     ax2.clear()
@@ -146,8 +147,8 @@ def update_plot(frame):
     ax1.set_title('Agent Position')
     ax1.grid(True)
 
-    # Draw the jamming zone
-    jamming_circle = plt.Circle((0, 0), 5, color='red', alpha=0.3)
+    # Draw jamming zone
+    jamming_circle = plt.Circle(jamming_center, jamming_radius, color='red', alpha=0.3)
     ax1.add_patch(jamming_circle)
 
     max_time = max(30, max(time_points) if time_points else 30)
@@ -159,26 +160,16 @@ def update_plot(frame):
     ax2.grid(True)
 
     for agent_id, pos_history in position_history.items():
-        trail_length = len(pos_history["x"])
-        for i in range(max(0, trail_length-20), trail_length-1):
-            alpha = 0.05 + (i - max(0, trail_length-20)) * 0.9 / min(20, trail_length)
-            ax1.plot([pos_history["x"][i], pos_history["x"][i+1]], 
-                     [pos_history["y"][i], pos_history["y"][i+1]], 
-                     'b-', alpha=alpha)
+        # Plot agent trajectory
+        ax1.plot(pos_history["x"], pos_history["y"], 'b-', alpha=0.5)
 
-        # Get latest position and communication status
+        # Get latest position
         latest_data = swarm_pos_dict[agent_id][-1]
         comm_quality = latest_data[2]
 
-        # Mark jammed agents
-        if jammed_agents.get(agent_id, False):
-            color = 'red'
-            label = f"{agent_id} (Jammed)"
-        else:
-            color = 'green' if comm_quality > low_comm_qual else 'orange'
-            label = f"{agent_id}"
-
-        ax1.scatter(latest_data[0], latest_data[1], color=color, s=100, label=label)
+        # Mark agents
+        color = 'red' if jammed_agents.get(agent_id, False) else 'green'
+        ax1.scatter(latest_data[0], latest_data[1], color=color, s=100, label=f"{agent_id}")
 
     for agent_id, history in comm_history.items():
         ax2.plot(time_points, history, label=f"{agent_id}")
@@ -188,17 +179,12 @@ def update_plot(frame):
 
     return []
 
-
 def run_simulation_with_plots():
     """Run the simulation with real-time plotting."""
     global simulation_start_time, ani
     simulation_start_time = time.time()
     initialize_agents()
-    ani = FuncAnimation(fig, update_plot, init_func=init_plot, 
-                    frames=None, interval=update_freq * 1000, blit=False, 
-                    cache_frame_data=False, save_count=100)
-
-    plt.tight_layout()
+    ani = FuncAnimation(fig, update_plot, init_func=init_plot, interval=update_freq * 1000, blit=False, cache_frame_data=False)
     plt.show()
 
 fig = plt.figure(figsize=(12, 10))
