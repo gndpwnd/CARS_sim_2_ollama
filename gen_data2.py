@@ -6,6 +6,7 @@ import matplotlib.gridspec as gridspec
 from matplotlib.animation import FuncAnimation
 import ollama
 import threading
+import re
 
 llm_responses = {}
 
@@ -131,40 +132,38 @@ def llm_make_move(agent_id):
     last_valid_position = swarm_pos_dict[agent_id][-1][:2]
     print(f"Prompting LLM for new coordinate for {agent_id} from {last_valid_position}")
     
-    tools = [{
-        "type": "function",
-        "function": {
-            "name": "get_new_coordinate",
-            "description": "Provide a new coordinate for a jammed agent to move to.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "x": {"type": "number"},
-                    "y": {"type": "number"}
-                },
-                "required": ["x", "y"]
-            }
-        }
-    }]
-    
+    # Provide the prompt with clearer instructions
     response = ollama.chat(
         model="llama3.2:1b",
-        messages=[{"role": "user", "content": f"Agent {agent_id} is jammed at {last_valid_position}. Provide a new coordinate."}],
-        tools=tools
+        messages=[{"role": "user", "content": f"Agent {agent_id} is jammed at {last_valid_position}. Provide a new coordinate (x, y). Only respond with the new coordinate."}]
     )
     
-    message = response.get("message", {})
-    tool_calls = message.get("tool_calls", [])
+    # Parse the response for the new coordinate
+    new_coordinate = parse_llm_response(response.get('message', {}).get('content', ''))
     
-    if tool_calls:
-        for tool_call in tool_calls:
-            if tool_call.get("function", {}).get("name") == "get_new_coordinate":
-                new_x = tool_call["function"]["arguments"]["x"]
-                new_y = tool_call["function"]["arguments"]["y"]
-                print(f"LLM provided new coordinate for {agent_id}: ({new_x}, {new_y})")
-                return (new_x, new_y)
-    
-    return last_valid_position
+    if new_coordinate:
+        print(f"LLM provided new coordinate for {agent_id}: {new_coordinate}")
+        return new_coordinate
+    else:
+        print(f"Failed to parse new coordinates for {agent_id}. Returning last valid position.")
+        return last_valid_position
+
+def parse_llm_response(response):
+    """
+    Parses the LLM response to extract the new coordinates (x, y).
+    Returns a tuple (x, y) if successful, or None if the format is incorrect.
+    """
+    # Regex to extract coordinates (float or integer)
+    match = re.search(r"\((-?\d+\.\d+), (-?\d+\.\d+)\)", response)
+    if match:
+        try:
+            # Convert matched coordinates to floats
+            new_x = float(match.group(1))
+            new_y = float(match.group(2))
+            return (new_x, new_y)
+        except ValueError:
+            print("Error parsing coordinates.")
+    return None
 
 def update_swarm_data(frame):
     global iteration_count
