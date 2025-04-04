@@ -89,10 +89,7 @@ def update_plot(frame):
     ax2.set_title('Communication Quality over Time')
     ax2.grid(True)
 
-    # Initialize the lists to hold communication quality and time points
-    comm_quality = []
-    agent_time_points = []
-
+    # Plot agent positions on the top plot
     for agent_id, pos_history in position_history.items():
         ax1.plot([p[0] for p in pos_history], [p[1] for p in pos_history], 'b-', alpha=0.5)
         latest_data = swarm_pos_dict[agent_id][-1]
@@ -101,20 +98,22 @@ def update_plot(frame):
         color = 'red' if jammed_positions[agent_id] else 'green'
         ax1.scatter(latest_data[0], latest_data[1], color=color, s=100, label=f"{agent_id}")
 
-        # Extract communication quality
-        comm_quality.append(latest_data[2])  # Communication quality
+    # Plot communication quality for each agent in the bottom plot
+    for agent_id, pos_history in position_history.items():
+        # Get the communication quality for this agent for every time step
+        agent_comm_quality = [swarm_pos_dict[agent_id][i][2] for i in range(len(swarm_pos_dict[agent_id]))]  # Communication quality for each agent
         
-        # Synchronize time points with the communication quality
-        agent_time_points.append(iteration_count * update_freq)
-
-    # Now that we have comm_quality and time_points, they must have the same length
-    if len(agent_time_points) == len(comm_quality):
-        ax2.plot(agent_time_points, comm_quality, label=f"Comm Quality")
-    else:
-        print("Error: time_points and comm_quality lengths do not match.")
+        # Create a list of time points for this agent (this assumes you're updating communication quality every `update_freq` frames)
+        agent_time_points = [i * update_freq for i in range(len(agent_comm_quality))]  # Time steps for each communication quality point
+        
+        # Plot communication quality over time for this agent
+        ax2.plot(agent_time_points, agent_comm_quality, label=f"{agent_id}", alpha=0.7)
 
     ax1.legend(loc='upper left')
+    ax2.legend(loc='upper left')
+
     return []
+
 
 def initialize_agents():
     global swarm_pos_dict, position_history, jammed_positions
@@ -152,7 +151,7 @@ def llm_make_move(agent_id):
     if distance_to_jamming > jamming_radius:
         print(f"{agent_id} is already outside jamming zone at {last_valid_position}. No LLM input needed.")
         return last_valid_position
-        
+
     print(f"Prompting LLM for new coordinate for {agent_id} from {last_valid_position}")
     
     # Create the prompt message - make it very clear what format is needed
@@ -234,7 +233,7 @@ def update_swarm_data(frame):
     
     # Track which agents need LLM input
     jammed_agents = {}
-    
+
     # First pass - identify jammed agents and move non-jammed agents
     for agent_id in swarm_pos_dict:
         last_position = swarm_pos_dict[agent_id][-1][:2]
@@ -299,6 +298,7 @@ def update_swarm_data(frame):
         print("LLM is responding...")
         thread = threading.Thread(target=call_llm, args=(iteration_count,))
         thread.start()
+
 
 def linear_path(start, end):
     step_size = 0.5
