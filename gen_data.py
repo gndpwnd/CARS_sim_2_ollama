@@ -114,14 +114,13 @@ def update_plot(frame):
 
     return []
 
-
 def initialize_agents():
     global swarm_pos_dict, position_history, jammed_positions
     for i in range(num_agents):
         agent_id = f"agent{i+1}"
         start_x = round_coord(random.uniform(x_range[0], x_range[0] + 5))
         start_y = round_coord(random.uniform(y_range[0], y_range[0] + 5))
-        swarm_pos_dict[agent_id] = [[start_x, start_y, high_comm_qual]]  # Start with high quality
+        swarm_pos_dict[agent_id] = [[start_x, start_y, high_comm_qual]]  # Position with communication quality
         position_history[agent_id] = [(start_x, start_y)]
         jammed_positions[agent_id] = False  # Boolean flag for jamming status
 
@@ -130,7 +129,7 @@ def call_llm(iteration):
     
     # Create the message to send, including position and communication quality for each agent
     prompt = f"Movement data (with communication quality): {position_history}"
-    print(f"Full movement data prompt sent to LLM: {prompt}")
+    print(f"Full prompt sent to LLM: {prompt}")
     
     # Send the prompt to the LLM
     response = ollama.chat(
@@ -144,18 +143,33 @@ def call_llm(iteration):
     print(f"Full LLM Response at iteration {iteration}: \"{response_content}\"")
 
 def llm_make_move(agent_id):
-    last_valid_position = swarm_pos_dict[agent_id][-1][:2]
+    # Number of historical segments to include in the prompt
+    num_history_segments = 5
+    
+    # Get the last `num_history_segments` positions for the agent
+    last_positions = swarm_pos_dict[agent_id][-num_history_segments:]
+    
+    # Calculate the distance from the last position to the jamming center
+    last_valid_position = last_positions[-1][:2]  # Get the last recorded position
     distance_to_jamming = math.sqrt((last_valid_position[0] - jamming_center[0])**2 + 
                                     (last_valid_position[1] - jamming_center[1])**2)
     
+    # If the agent is outside the jamming radius, no LLM input is needed
     if distance_to_jamming > jamming_radius:
         print(f"{agent_id} is already outside jamming zone at {last_valid_position}. No LLM input needed.")
         return last_valid_position
-
+    
+    # Prepare a movement history string for the last `num_history_segments` positions
+    position_history = "\n".join([f"({pos[0]}, {pos[1]})" for pos in last_positions])
+    
     print(f"Prompting LLM for new coordinate for {agent_id} from {last_valid_position}")
     
-    # Create the prompt message - make it very clear what format is needed
-    prompt = f"Agent {agent_id} is jammed at {last_valid_position}. Provide exactly one new coordinate pair as (x, y) with both values being numbers. Your response must be 25 characters or less and should only contain the coordinate."
+    # Create the prompt message with the position history
+    prompt = f"Agent {agent_id} is jammed at {last_valid_position}. " \
+             f"Here are the last {num_history_segments} positions:\n{position_history}\n" \
+             f"Provide exactly one new coordinate pair as (x, y) with both values being numbers. " \
+             f"Your response must be 25 characters or less and should only contain the coordinate."
+    
     print(f"Full prompt sent to LLM: {prompt}")
     
     # Try multiple times to get a valid response
@@ -195,6 +209,7 @@ def llm_make_move(agent_id):
     if len(swarm_pos_dict[agent_id]) > 1:
         return swarm_pos_dict[agent_id][-2][:2]
     return last_valid_position
+
 
 def parse_llm_response(response):
     """
@@ -309,14 +324,6 @@ def update_swarm_data(frame):
                 # Update comm quality to high since agent is now outside jamming zone
                 swarm_pos_dict[agent_id][-1][2] = high_comm_qual
                 jammed_positions[agent_id] = False  # Mark as no longer jammed
-    
-    # Call LLM asynchronously to analyze movement data
-    if iteration_count % num_history_segments == 0:
-        print(f"Sending movement data to LLM at iteration {iteration_count}")
-        print(f"Data: {position_history}")
-        print("LLM is responding...")
-        thread = threading.Thread(target=call_llm, args=(iteration_count,))
-        thread.start()
 
 
 def linear_path(start, end):
