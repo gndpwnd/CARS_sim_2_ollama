@@ -33,6 +33,11 @@ jammed_positions = {}
 time_points = []
 iteration_count = 0
 
+# LLM Prompt Constraints
+MAX_CHARS_PER_AGENT = 25
+LLM_PROMPT_TIMEOUT = 5  # seconds to wait for LLM response before giving up
+MAX_RETRIES = 3  # maximum number of retries for LLM prompting
+
 def round_coord(value):
     return round(value, 3)
 
@@ -141,29 +146,47 @@ def llm_make_move(agent_id):
     last_valid_position = swarm_pos_dict[agent_id][-1][:2]
     print(f"Prompting LLM for new coordinate for {agent_id} from {last_valid_position}")
     
-    # Create the prompt message
-    prompt = f"Agent {agent_id} is jammed at {last_valid_position}. Provide a new coordinate (x, y). Only respond with the new coordinate."
+    # Create the prompt message - make it very clear what format is needed
+    prompt = f"Agent {agent_id} is jammed at {last_valid_position}. Provide exactly one new coordinate pair as (x, y) with both values being numbers. Your response must be 25 characters or less and should only contain the coordinate."
     print(f"Full prompt sent to LLM: {prompt}")
     
-    # Send the prompt and get the response
-    response = ollama.chat(
-        model="llama3.2:1b",
-        messages=[{"role": "user", "content": prompt}]
-    )
+    # Try multiple times to get a valid response
+    for attempt in range(MAX_RETRIES):
+        try:
+            # Send the prompt with a timeout
+            response = ollama.chat(
+                model="llama3.2:1b",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            
+            # Get and print the full response
+            response_content = response.get('message', {}).get('content', '')
+            print(f"Full LLM response: \"{response_content}\"")
+            
+            # Check if response exceeds character limit
+            if len(response_content) > MAX_CHARS_PER_AGENT:
+                print(f"Response exceeds character limit ({len(response_content)} > {MAX_CHARS_PER_AGENT}), retrying...")
+                continue
+            
+            # Parse the response for the new coordinate
+            new_coordinate = parse_llm_response(response_content)
+            
+            if new_coordinate:
+                print(f"LLM provided new coordinate for {agent_id}: {new_coordinate}")
+                return new_coordinate
+            else:
+                print(f"Failed to parse coordinates, retrying (attempt {attempt+1}/{MAX_RETRIES})...")
+        
+        except Exception as e:
+            print(f"Error getting LLM response: {e}. Retrying (attempt {attempt+1}/{MAX_RETRIES})...")
     
-    # Get and print the full response
-    response_content = response.get('message', {}).get('content', '')
-    print(f"Full LLM response: \"{response_content}\"")
+    # If we get here, we didn't get a valid response after all retries
+    print(f"Failed to get valid coordinates after {MAX_RETRIES} attempts. Using safe position.")
     
-    # Parse the response for the new coordinate
-    new_coordinate = parse_llm_response(response_content)
-    
-    if new_coordinate:
-        print(f"LLM provided new coordinate for {agent_id}: {new_coordinate}")
-        return new_coordinate
-    else:
-        print(f"Failed to parse new coordinates for {agent_id}. Returning last valid position.")
-        return last_valid_position
+    # Return the second-to-last position as a safe fallback
+    if len(swarm_pos_dict[agent_id]) > 1:
+        return swarm_pos_dict[agent_id][-2][:2]
+    return last_valid_position
 
 def parse_llm_response(response):
     """
@@ -175,11 +198,13 @@ def parse_llm_response(response):
     pattern1 = r"\((-?\d+\.?\d*),\s*(-?\d+\.?\d*)\)"
     # Pattern 2: x: value, y: value format
     pattern2 = r"x:?\s*(-?\d+\.?\d*)[,\s]*y:?\s*(-?\d+\.?\d*)"
-    # Pattern 3: Just two numbers separated by comma or space
+    # Pattern 3: Just two numbers separated by comma
     pattern3 = r"(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)"
+    # Pattern 4: Just two numbers on separate lines
+    pattern4 = r"(-?\d+\.?\d*)\s*\n\s*(-?\d+\.?\d*)"
     
     # Try each pattern
-    for pattern in [pattern1, pattern2, pattern3]:
+    for pattern in [pattern1, pattern2, pattern3, pattern4]:
         match = re.search(pattern, response)
         if match:
             try:
@@ -198,27 +223,51 @@ def update_swarm_data(frame):
     global iteration_count
     iteration_count += 1
     
+    # Track which agents need LLM input
+    jammed_agents = {}
+    
+    # First pass - identify jammed agents and move non-jammed agents
     for agent_id in swarm_pos_dict:
         last_position = swarm_pos_dict[agent_id][-1][:2]
         distance_to_jamming = math.sqrt((last_position[0] - jamming_center[0])**2 + (last_position[1] - jamming_center[1])**2)
         
         if distance_to_jamming <= jamming_radius:
             print(f"{agent_id} is jammed at {last_position}. Requesting new coordinate from LLM.")
+            # Mark communication quality as low
             swarm_pos_dict[agent_id].append([last_position[0], last_position[1], low_comm_qual])
             jammed_positions[agent_id].append(last_position)
-
-            # Get a new coordinate from LLM
-            new_coordinate = llm_make_move(agent_id)
-            path = linear_path(new_coordinate, mission_end)
+            
+            # Store this agent for LLM processing
+            jammed_agents[agent_id] = True
+            
+            # Move back to second-to-last position as a safe position
+            if len(swarm_pos_dict[agent_id]) > 1:
+                safe_position = swarm_pos_dict[agent_id][-2][:2]  # Second-to-last position
+                position_history[agent_id].append(safe_position)  # Add safe position to history
+            else:
+                # If there's no second-to-last position, just use the current one
+                safe_position = last_position
+                position_history[agent_id].append(safe_position)
         else:
+            # Non-jammed agent - proceed with normal movement
             path = linear_path(last_position, mission_end)
+            if path:
+                next_position = path[0]
+                swarm_pos_dict[agent_id].append([round_coord(next_position[0]), round_coord(next_position[1]), 1.0])
+                position_history[agent_id].append(next_position)
+    
+    # Second pass - handle jammed agents
+    for agent_id in jammed_agents:
+        # Get LLM input for new coordinates
+        new_coordinate = llm_make_move(agent_id)
         
-        if path:
-            next_position = path[0]
-            swarm_pos_dict[agent_id].append([round_coord(next_position[0]), round_coord(next_position[1]), 1.0])
-            position_history[agent_id].append(next_position)
-
-    # Call LLM asynchronously to avoid blocking the simulation
+        # Update position history with new coordinate from LLM
+        if new_coordinate:
+            # Only update if we got valid coordinates
+            swarm_pos_dict[agent_id][-1] = [round_coord(new_coordinate[0]), round_coord(new_coordinate[1]), low_comm_qual]
+            position_history[agent_id][-1] = new_coordinate
+    
+    # Call LLM asynchronously to analyze movement data
     if iteration_count % num_history_segments == 0:
         print(f"Sending movement data to LLM at iteration {iteration_count}")
         print(f"Data: {position_history}")
