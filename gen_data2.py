@@ -121,25 +121,42 @@ def initialize_agents():
 
 def call_llm(iteration):
     global llm_responses
+    
+    # Create the message to send
+    prompt = f"Movement data: {position_history}"
+    print(f"Full movement data prompt sent to LLM: {prompt}")
+    
+    # Send the prompt
     response = ollama.chat(
         model="llama3.2:1b",
-        messages=[{"role": "user", "content": f"Movement data: {position_history}"}]
+        messages=[{"role": "user", "content": prompt}]
     )
-    llm_responses[iteration] = response.get('message', {}).get('content', 'No response')
-    print(f"LLM Response at iteration {iteration}: {llm_responses[iteration]}")
+    
+    # Get and store the response
+    response_content = response.get('message', {}).get('content', 'No response')
+    llm_responses[iteration] = response_content
+    print(f"Full LLM Response at iteration {iteration}: \"{response_content}\"")
 
 def llm_make_move(agent_id):
     last_valid_position = swarm_pos_dict[agent_id][-1][:2]
     print(f"Prompting LLM for new coordinate for {agent_id} from {last_valid_position}")
     
-    # Provide the prompt with clearer instructions
+    # Create the prompt message
+    prompt = f"Agent {agent_id} is jammed at {last_valid_position}. Provide a new coordinate (x, y). Only respond with the new coordinate."
+    print(f"Full prompt sent to LLM: {prompt}")
+    
+    # Send the prompt and get the response
     response = ollama.chat(
         model="llama3.2:1b",
-        messages=[{"role": "user", "content": f"Agent {agent_id} is jammed at {last_valid_position}. Provide a new coordinate (x, y). Only respond with the new coordinate."}]
+        messages=[{"role": "user", "content": prompt}]
     )
     
+    # Get and print the full response
+    response_content = response.get('message', {}).get('content', '')
+    print(f"Full LLM response: \"{response_content}\"")
+    
     # Parse the response for the new coordinate
-    new_coordinate = parse_llm_response(response.get('message', {}).get('content', ''))
+    new_coordinate = parse_llm_response(response_content)
     
     if new_coordinate:
         print(f"LLM provided new coordinate for {agent_id}: {new_coordinate}")
@@ -153,16 +170,28 @@ def parse_llm_response(response):
     Parses the LLM response to extract the new coordinates (x, y).
     Returns a tuple (x, y) if successful, or None if the format is incorrect.
     """
-    # Regex to extract coordinates (float or integer)
-    match = re.search(r"\((-?\d+\.\d+), (-?\d+\.\d+)\)", response)
-    if match:
-        try:
-            # Convert matched coordinates to floats
-            new_x = float(match.group(1))
-            new_y = float(match.group(2))
-            return (new_x, new_y)
-        except ValueError:
-            print("Error parsing coordinates.")
+    # Try different regex patterns to match coordinates
+    # Pattern 1: (x, y) format with any number of digits
+    pattern1 = r"\((-?\d+\.?\d*),\s*(-?\d+\.?\d*)\)"
+    # Pattern 2: x: value, y: value format
+    pattern2 = r"x:?\s*(-?\d+\.?\d*)[,\s]*y:?\s*(-?\d+\.?\d*)"
+    # Pattern 3: Just two numbers separated by comma or space
+    pattern3 = r"(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)"
+    
+    # Try each pattern
+    for pattern in [pattern1, pattern2, pattern3]:
+        match = re.search(pattern, response)
+        if match:
+            try:
+                new_x = float(match.group(1))
+                new_y = float(match.group(2))
+                return (new_x, new_y)
+            except ValueError:
+                print(f"Matched pattern but couldn't convert to float: {match.group(1)}, {match.group(2)}")
+                continue
+    
+    # If we got here, no pattern matched
+    print(f"No valid coordinate format found in response: \"{response}\"")
     return None
 
 def update_swarm_data(frame):
