@@ -38,19 +38,19 @@
 	- [ ] Update future waypoints based on new jamming coordinates
 
 
-## Rover Location Relay
+## GPS-Denied Surveying Rover Location Relay (Real World Application #1)
 
 - [ ] Rover exists on plot with 3 LLM-agents
 	- [ ] LLM-agents triangulate position of rover
 - [ ] Rover moves across plot
 	- [ ] LLM-agents update rover location
 	- [ ] LLM-agents must be within max-distance of rover (roughly follow rover, LLM control)
-- [ ] Rover moves through jammed area
+- [ ] Rover moves through a jammed area
 	- [ ] LLM-Agents maintain non-jammed status
 	- [ ] LLM-Agents also maintain max-distance of rover (adapt to rover location and stay outside of jammed area)
 
 
-## User-LLM-Agent Interaction
+## User-LLM-Agent Interaction (Highest Abstraction)
 
 - [ ] User can query info on agents from LLM context
 	- [ ] Agent status, position
