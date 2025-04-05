@@ -16,7 +16,7 @@ high_comm_qual = 0.80
 low_comm_qual = 0.20
 x_range = (-10, 10)
 y_range = (-10, 10)
-num_agents = 3
+num_agents = 10
 num_history_segments = 5
 
 # Mission parameters

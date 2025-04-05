@@ -16,18 +16,15 @@ high_comm_qual = 0.80
 low_comm_qual = 0.20
 x_range = (-10, 10)
 y_range = (-10, 10)
-num_agents = 3
+num_agents = 5
 num_history_segments = 5
 
 # Mission parameters
 mission_end = (10, 10)
 
 # Jamming zone parameters
-# each element is a tuple (x, y, radius)
-jamming_zones = [
-    (0, 0, 5),
-    (2, 5, 4),
-]
+jamming_center = (0, 0)
+jamming_radius = 5
 
 # Swarm data
 swarm_pos_dict = {}
@@ -44,6 +41,7 @@ MAX_RETRIES = 3  # maximum number of retries for LLM prompting
 def round_coord(value):
     return round(value, 3)
 
+# Plotting setup
 def init_plot():
     ax1.clear()
     ax2.clear()
@@ -55,10 +53,8 @@ def init_plot():
     ax1.set_title('Agent Position')
     ax1.grid(True)
     
-    # Plot all jamming zones
-    for (center_x, center_y, radius) in jamming_zones:
-        jamming_circle = plt.Circle((center_x, center_y), radius, color='red', alpha=0.3)
-        ax1.add_patch(jamming_circle)
+    jamming_circle = plt.Circle(jamming_center, jamming_radius, color='red', alpha=0.3)
+    ax1.add_patch(jamming_circle)
     
     ax2.set_xlim(0, 30)
     ax2.set_ylim(0, 1)
@@ -82,10 +78,8 @@ def update_plot(frame):
     ax1.set_title('Agent Position')
     ax1.grid(True)
 
-    # Plot all jamming zones
-    for (center_x, center_y, radius) in jamming_zones:
-        jamming_circle = plt.Circle((center_x, center_y), radius, color='red', alpha=0.3)
-        ax1.add_patch(jamming_circle)
+    jamming_circle = plt.Circle(jamming_center, jamming_radius, color='red', alpha=0.3)
+    ax1.add_patch(jamming_circle)
 
     max_time = max(30, max(time_points) if time_points else 30)
     ax2.set_xlim(0, max_time)
@@ -100,16 +94,8 @@ def update_plot(frame):
         ax1.plot([p[0] for p in pos_history], [p[1] for p in pos_history], 'b-', alpha=0.5)
         latest_data = swarm_pos_dict[agent_id][-1]
         
-        # Check if the agent is in a jamming zone
-        jammed = False
-        for (center_x, center_y, radius) in jamming_zones:
-            distance_to_jamming = math.sqrt((latest_data[0] - center_x) ** 2 + (latest_data[1] - center_y) ** 2)
-            if distance_to_jamming <= radius:
-                jammed = True
-                break
-        
         # Use jammed_positions boolean flag for determining color
-        color = 'red' if jammed else 'green'
+        color = 'red' if jammed_positions[agent_id] else 'green'
         ax1.scatter(latest_data[0], latest_data[1], color=color, s=100, label=f"{agent_id}")
 
     # Plot communication quality for each agent in the bottom plot
@@ -163,20 +149,13 @@ def llm_make_move(agent_id):
     # Get the last `num_history_segments` positions for the agent
     last_positions = swarm_pos_dict[agent_id][-num_history_segments:]
     
-    # Calculate the distance from the last position to the jamming centers
+    # Calculate the distance from the last position to the jamming center
     last_valid_position = last_positions[-1][:2]  # Get the last recorded position
-    is_jammed = False
-    
-    # Loop through each jamming zone and calculate distance
-    for (center_x, center_y, radius) in jamming_zones:
-        distance_to_jamming = math.sqrt((last_valid_position[0] - center_x)**2 + 
-                                        (last_valid_position[1] - center_y)**2)
-        if distance_to_jamming <= radius:
-            is_jammed = True
-            break  # Once the agent is within any jamming zone, break the loop
+    distance_to_jamming = math.sqrt((last_valid_position[0] - jamming_center[0])**2 + 
+                                    (last_valid_position[1] - jamming_center[1])**2)
     
     # If the agent is outside the jamming radius, no LLM input is needed
-    if not is_jammed:
+    if distance_to_jamming > jamming_radius:
         print(f"{agent_id} is already outside jamming zone at {last_valid_position}. No LLM input needed.")
         return last_valid_position
     
@@ -287,20 +266,14 @@ def update_swarm_data(frame):
     for agent_id in swarm_pos_dict:
         last_position = swarm_pos_dict[agent_id][-1][:2]
         comm_quality = swarm_pos_dict[agent_id][-1][2]
-        jammed = False
+        distance_to_jamming = math.sqrt((last_position[0] - jamming_center[0])**2 + (last_position[1] - jamming_center[1])**2)
         
-        # Check if the agent is in any of the jamming zones
-        for (center_x, center_y, radius) in jamming_zones:
-            distance_to_jamming = math.sqrt((last_position[0] - center_x) ** 2 + (last_position[1] - center_y) ** 2)
-            if distance_to_jamming <= radius:
-                jammed = True
-                break
-        
-        if jammed:
+        if distance_to_jamming <= jamming_radius:
             print(f"{agent_id} is jammed at {last_position}. Requesting new coordinate from LLM.")
             # Mark communication quality as low
             swarm_pos_dict[agent_id].append([last_position[0], last_position[1], low_comm_qual])
             jammed_positions[agent_id] = True  # Mark as currently jammed
+            
             # Store this agent for LLM processing
             jammed_agents[agent_id] = True
             
@@ -310,6 +283,7 @@ def update_swarm_data(frame):
             position_history[agent_id].append(safe_position)  # Add safe position to history
         else:
             # Agent is outside jamming zone
+            # Check if it was previously jammed and now recovered
             if agent_id in jammed_positions and jammed_positions[agent_id]:
                 print(f"{agent_id} has recovered from jamming at {last_position}. Resuming normal operation.")
                 jammed_positions[agent_id] = False  # Mark as no longer jammed
@@ -318,6 +292,7 @@ def update_swarm_data(frame):
             path = linear_path(last_position, mission_end)
             if path:
                 next_position = path[0]
+                # High communication quality for agents outside jamming zone
                 swarm_pos_dict[agent_id].append([round_coord(next_position[0]), round_coord(next_position[1]), high_comm_qual])
                 position_history[agent_id].append(next_position)
     
@@ -340,6 +315,15 @@ def update_swarm_data(frame):
             # Only update if we got valid coordinates
             swarm_pos_dict[agent_id][-1] = [round_coord(new_coordinate[0]), round_coord(new_coordinate[1]), low_comm_qual]
             position_history[agent_id][-1] = new_coordinate
+            
+            # Check if the new position is outside the jamming zone
+            distance_to_jamming = math.sqrt((new_coordinate[0] - jamming_center[0])**2 + 
+                                            (new_coordinate[1] - jamming_center[1])**2)
+            if distance_to_jamming > jamming_radius:
+                print(f"{agent_id} moved out of jamming zone to {new_coordinate}. Comm quality restored.")
+                # Update comm quality to high since agent is now outside jamming zone
+                swarm_pos_dict[agent_id][-1][2] = high_comm_qual
+                jammed_positions[agent_id] = False  # Mark as no longer jammed
 
 
 def linear_path(start, end):
