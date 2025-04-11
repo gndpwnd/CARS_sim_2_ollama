@@ -1,5 +1,16 @@
 # CARS_sim_2_ollama
 
+## Setup Demos
+
+clone the repo
+```
+git clone https://github.com/gndpwnd/CARS_sim_2_ollama.git; cd CARS_sim_2_ollama
+```
+
+setup venv and install dependencies
+```
+python3 -m venv venv; source venv/bin/activate; python -m pip install --upgrade pip; pip install -r requirements.txt
+```
 
 ## Basic Simulation
 
