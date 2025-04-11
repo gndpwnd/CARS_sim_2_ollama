@@ -6,7 +6,7 @@ import hashlib
 
 # Try importing the modules with error handling
 try:
-    from demos.basic_rag_demo.rag_store import add_log, retrieve_relevant
+    from rag_store import add_log, retrieve_relevant
     print("Successfully imported rag_store")
 except Exception as e:
     print(f"ERROR importing rag_store: {e}")
