@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Button
 from PyQt5.QtWidgets import QApplication
+from rag.rag_store import add_log, retrieve_relevant
+
 
 # Simulation parameters
 num_agents = 5
@@ -75,40 +77,50 @@ def initialize_agents():
     
     return agent_positions, agent_paths, agent_jammed, agent_comm_quality, movement_history, last_safe_position
 
-# Placeholder LLM call
+
+# Placeholder LLM call with RAG integration
 def llm_make_move(agent_id, history, current_pos):
-    """Simulated LLM call to make decision for jammed agents, with movement constraint"""
+    """
+    Simulated LLM call to make a decision for jammed agents, with movement constraint.
+    """
     print(f"[LLM] Requesting new move for Agent {agent_id} with history: {history[-3:]}")
-    
-    # Try to find a valid move that's outside the jamming zone
-    max_attempts = 10
-    for _ in range(max_attempts):
-        # Generate a random direction (unit vector)
-        angle = random.uniform(0, 2 * np.pi)
-        direction = np.array([np.cos(angle), np.sin(angle)])
-        
-        # Move max_movement_per_step in that direction
-        suggestion = current_pos + direction * max_movement_per_step
-        
-        # Clamp to the boundaries of the plane
-        suggestion[0] = max(min(suggestion[0], 10), -10)
-        suggestion[1] = max(min(suggestion[1], 10), -10)
-        
-        # Check if this would be outside the jamming zone
-        if not is_jammed(suggestion):
-            print(f"[LLM] Suggested new coordinate for Agent {agent_id}: {suggestion}")
-            return suggestion
-    
-    # If we failed to find a good move after max_attempts, just move in a random valid direction
-    print(f"[LLM] Couldn't find non-jammed position for Agent {agent_id}, moving randomly")
+
+    # Retrieve relevant logs from ChromaDB
+    query = f"Agent {agent_id} is jammed at {current_pos}. History: {history[-3:]}"
+    relevant_logs = retrieve_relevant(query, k=3)
+    context = "\n".join(relevant_logs)
+
+    # Create a prompt for the LLM
+    prompt = f"Context:\n{context}\n\nAgent {agent_id} is jammed at {current_pos}. Suggest a new position."
+
+    # Simulate LLM response
+    try:
+        response = ollama.chat(
+            model="llama3.2:1b",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        llm_response = response.get('message', {}).get('content', None)
+        print(f"[LLM] Response for Agent {agent_id}: {llm_response}")
+
+        # Add the query and response to ChromaDB
+        add_log(log_id=f"agent-{agent_id}-query", log_text=query, metadata={"role": "query"})
+        add_log(log_id=f"agent-{agent_id}-response", log_text=llm_response, metadata={"role": "response"})
+
+        # Parse the response into coordinates
+        if llm_response:
+            new_position = parse_llm_response(llm_response)
+            if new_position:
+                return new_position
+    except Exception as e:
+        print(f"[LLM] Error for Agent {agent_id}: {e}")
+
+    # Fallback: Random valid move
+    print(f"[LLM] Fallback: Generating random move for Agent {agent_id}")
     angle = random.uniform(0, 2 * np.pi)
     direction = np.array([np.cos(angle), np.sin(angle)])
     suggestion = current_pos + direction * max_movement_per_step
-    
-    # Clamp to the boundaries
     suggestion[0] = max(min(suggestion[0], 10), -10)
     suggestion[1] = max(min(suggestion[1], 10), -10)
-    
     return suggestion
 
 # Check if inside jamming zone

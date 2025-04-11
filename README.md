@@ -26,8 +26,8 @@ python3 -m venv venv; source venv/bin/activate; python -m pip install --upgrade 
 
 - [x] Agent Jammed
 	- [x] Identify Jamming (communication quality threshold)
-	- [ ] Return to last known non-jammed coordinates
-		- [ ] Return to last known non-jammed coordinates before promptin llm for new coordinates
+	- [x] Return to last known non-jammed coordinates
+		- [x] Return to last known non-jammed coordinates before promptin llm for new coordinates
 - [x] Agent Recovered
 	- [x] Agent previously jammed, but is no longer jammed, do not need to prompt LLM
 	- [x] Based on current location and mission end state, find new path to get mission end state
