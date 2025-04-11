@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat with Ollama</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>Chat with Ollama</h1>
+        </div>
+        <div id="chat-box" class="chat-box">
+            <!-- Chat messages will appear here -->
+        </div>
+        <div class="chat-input">
+            <input id="user-input" type="text" placeholder="Type your message..." autocomplete="off">
+            <button id="send-button">Send</button>
+        </div>
+    </div>
+
+    <script>
+        const chatBox = document.getElementById('chat-box');
+        const userInput = document.getElementById('user-input');
+        const sendButton = document.getElementById('send-button');
+    
+        function appendMessage(role, message) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+            messageDiv.textContent = message;
+            chatBox.appendChild(messageDiv);
+            chatBox.scrollTop = chatBox.scrollHeight; // Auto-scroll to the bottom
+        }
+    
+        function showThinking() {
+            const thinkingDiv = document.createElement('div');
+            thinkingDiv.className = 'thinking';
+            thinkingDiv.id = 'thinking';
+            thinkingDiv.textContent = 'Ollama is thinking';
+            chatBox.appendChild(thinkingDiv);
+            chatBox.scrollTop = chatBox.scrollHeight; // Auto-scroll to the bottom
+        }
+    
+        function removeThinking() {
+            const thinkingDiv = document.getElementById('thinking');
+            if (thinkingDiv) {
+                thinkingDiv.remove();
+            }
+        }
+    
+        sendButton.addEventListener('click', async () => {
+            const message = userInput.value.trim();
+            if (!message) return;
+    
+            // Append user's message to the chat
+            appendMessage('user', message);
+            userInput.value = '';
+    
+            // Show "thinking" animation
+            showThinking();
+    
+            // Send the message to the server
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message })
+                });
+                const data = await response.json();
+                removeThinking(); // Remove "thinking" animation
+                if (data.response) {
+                    appendMessage('ollama', data.response);
+                } else {
+                    appendMessage('ollama', 'Error: No response from Ollama.');
+                }
+            } catch (error) {
+                removeThinking(); // Remove "thinking" animation
+                appendMessage('ollama', `Error: ${error.message}`);
+            }
+        });
+    
+        // Allow pressing "Enter" to send a message
+        userInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendButton.click();
+            }
+        });
+    </script>
+</body>
+</html>
