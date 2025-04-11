@@ -1,2 +1,7 @@
 **venv/
 **pycache**
+**chroma_db/
+**.pkl
+**.db
+**.bin
+**faiss_stuff

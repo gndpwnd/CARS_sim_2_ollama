@@ -68,3 +68,95 @@ ok i now have the following tree with the following files:
 └── requirements.txt
 
 I would like to ensure that if not exists, chromadb fodler and chromadb data will be created and stored. I also want to smooth over the RAG functions for putting data into the rag (from the gen data) and then make sure ollama is pulling from the rag
+
+need python3.11
+
+```
+RuntimeError: Your system has an unsupported version of sqlite3. Chroma                     requires sqlite3 >= 3.35.0.
+Please visit                     https://docs.trychroma.com/troubleshooting#sqlite to learn how
+```
+
+```
+sudo add-apt-repository ppa:deadsnakes/ppa
+sudo apt update
+sudo apt install python3.11 python3.11-venv python3.11-dev
+python3.11 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+```
+remove pkg_resources==0.0.0 from requirements.txt
+```
+
+```
+sudo apt update
+sudo apt install -y build-essential libreadline-dev libncursesw5-dev \
+    libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev \
+    zlib1g-dev libffi-dev liblzma-dev uuid-dev
+```
+
+https://www.sqlite.org/downloads
+```
+wget https://www.sqlite.org/***.tar.gz
+tar xzf sqlite-autoconf***.tar.gz
+cd sqlite-autoconf-***
+./configure --prefix=/usr/local
+make -j4
+sudo make install
+```
+
+I am working on trying to make a simple RAG demo with the following files. what are some things i might need to consider or change with this setup? i am trying to track agent id, position, communication quality, and timestamp for the LLM to referece. is the llm even able to reference my chromadb? i am trying to get setup to interact with the ollama llmm from my chat app in the same context window as my gen_data simulator
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Here’s a breakdown of the flow:
+
+    User sends a message → User's message is processed and stored in FAISS.
+
+    Relevant logs are retrieved from FAISS → These logs provide context based on previous conversations.
+
+    Ollama is prompted with context and user input → Ollama responds based on the provided context.
+
+    The response is stored in FAISS → The response from Ollama becomes part of the conversation history, which will be used for the next message.
+
+Example Interaction Flow
+
+    User sends: "How does the sine wave work?"
+
+        Relevant context: "Sine wave data - The amplitude is 1, the frequency is 0.1, and it oscillates between -1 and 1."
+
+        Ollama Response: "The sine wave works by oscillating between a maximum and minimum value based on frequency and amplitude."
+
+    User sends: "What is the current state of the sine wave?"
+
+        Relevant context: Previous conversations about the sine wave.
+
+        Ollama Response: "The sine wave is currently at position X: 1.2, Y: 0.8, based on the latest frequency value."
+
+    Next chat: The response above would be stored and used as context for the next round of conversation.
+
+export HF_HOME=/your/custom/path/.hf
+export TRANSFORMERS_CACHE=/your/custom/path/.cache/transformers
+
+
+
+ record "x,y" position, "daytime, %", "nightime, %", and timestamp.
