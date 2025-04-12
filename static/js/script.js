@@ -32,6 +32,7 @@ function addLog(log) {
     const { text, metadata = {} } = log;
     const {
         agent_id = 'N/A',
+        role = 'N/A',
         timestamp = 'Unknown Time',
         jammed = false,
         communication_quality = 'N/A',
@@ -40,19 +41,26 @@ function addLog(log) {
 
     const logDiv = document.createElement('div');
     logDiv.className = 'log-message';
+    if (role === 'user') {
+        logDiv.classList.add('user-log');
+    } else if (role === 'ollama') {
+        logDiv.classList.add('ollama-log');
+    }
 
     logDiv.innerHTML = `
         <div class="log-header">
-            <strong>Agent ${agent_id}</strong>
+            <strong>${role || agent_id}</strong>
             <span class="log-time">${new Date(timestamp).toLocaleString()}</span>
         </div>
         <div class="log-body">${text}</div>
         <div class="log-meta">
             <span class="log-id">#${log_id}</span>
-            <span class="log-status ${jammed ? 'jammed' : 'clear'}">
-                ${jammed ? '🚫 Jammed' : '✅ Clear'}
-            </span>
-            <span class="log-quality">Comm: ${communication_quality}</span>
+            ${jammed !== undefined ? `
+                <span class="log-status ${jammed ? 'jammed' : 'clear'}">
+                    ${jammed ? '🚫 Jammed' : '✅ Clear'}
+                </span>
+            ` : ''}
+            ${communication_quality ? `<span class="log-quality">Comm: ${communication_quality}</span>` : ''}
         </div>
     `;
 
@@ -63,42 +71,89 @@ function addLog(log) {
 // Fetch the current number of logs
 async function getLogCount() {
     try {
-        const response = await fetch('/logs/count');
+        // Use the correct route matching your Flask backend
+        const response = await fetch('/log_count');
         const data = await response.json();
-        totalLogs = data.count || 0; // Store the total logs count
+        totalLogs = data.log_count || 0; // Match the field name from your Flask route
+        console.log(`Total logs: ${totalLogs}`);
     } catch (e) {
         console.error("Error fetching log count:", e);
     }
 }
 
-// Fetch a specific log by its index
-async function getLogByNumber(logNumber) {
+// Load logs function - this was missing in your original code
+async function loadLogs() {
+    if (loading) return;
+    loading = true;
+    
+    if (loadingDiv) {
+        loadingDiv.textContent = "Loading logs...";
+    }
+
     try {
-        const response = await fetch(`/logs/${logNumber}`);
+        const response = await fetch('/logs');
         const data = await response.json();
-        if (data.log) {
-            addLog(data.log); // Add the log to the container
+
+        if (Array.isArray(data.logs) && data.logs.length > 0) {
+            // Clear existing logs if needed
+            // logContainer.innerHTML = '';
+            
+            data.logs.forEach(log => {
+                addLog(log);
+                if (log?.metadata?.timestamp) {
+                    const logTime = new Date(log.metadata.timestamp);
+                    if (!lastLogTimestamp || logTime > new Date(lastLogTimestamp)) {
+                        lastLogTimestamp = log.metadata.timestamp;
+                    }
+                }
+            });
+            
+            hasMore = data.has_more;
         } else {
-            console.error(`Log with number ${logNumber} not found.`);
+            console.log("No logs found or empty data returned");
+        }
+        
+        if (loadingDiv) {
+            loadingDiv.textContent = hasMore ? "" : "No more logs.";
         }
     } catch (e) {
-        console.error("Error fetching specific log:", e);
+        console.error("Error loading logs:", e);
+        if (loadingDiv) {
+            loadingDiv.textContent = "Error loading logs.";
+        }
+    } finally {
+        loading = false;
+    }
+}
+
+// Fetch a specific log chunk
+async function getLogChunk(chunkNum) {
+    try {
+        const response = await fetch(`/log_chunk/${chunkNum}`);
+        const data = await response.json();
+        if (Array.isArray(data.logs) && data.logs.length > 0) {
+            data.logs.forEach(log => addLog(log));
+            hasMore = data.has_more;
+        }
+    } catch (e) {
+        console.error(`Error fetching log chunk ${chunkNum}:`, e);
     }
 }
 
 // Livestream function to show the most recent logs
 async function startLivestream() {
     setInterval(async () => {
-        if (loading || !hasMore) return;
-        loading = true;
-        loadingDiv.textContent = "Loading...";
-
+        if (loading) return;
+        
         try {
+            await getLogCount(); // Update the log count
+            
+            // Only fetch new logs if we're not already loading
             const response = await fetch('/logs');
             const data = await response.json();
 
             if (Array.isArray(data.logs) && data.logs.length > 0) {
-                data.logs.reverse().forEach(log => {
+                data.logs.forEach(log => {
                     const time = log?.metadata?.timestamp || 'unknown';
                     if (!lastLogTimestamp || new Date(time) > new Date(lastLogTimestamp)) {
                         addLog(log);
@@ -106,18 +161,8 @@ async function startLivestream() {
                     }
                 });
             }
-
-            if (!data.has_more) {
-                hasMore = false;
-                loadingDiv.textContent = "No more logs.";
-            } else {
-                loadingDiv.textContent = "";
-            }
         } catch (e) {
-            loadingDiv.textContent = "Error loading logs.";
-            console.error("Error while loading logs:", e);
-        } finally {
-            loading = false;
+            console.error("Error during livestream update:", e);
         }
     }, 3000); // Update every 3 seconds
 }
@@ -131,6 +176,7 @@ messageForm.addEventListener('submit', async (e) => {
     addMessage(message, 'user');
     messageInput.value = '';
 
+    // Create a temporary "thinking" message
     const thinkingMessageDiv = document.createElement('div');
     thinkingMessageDiv.className = 'bot-message thinking';
     thinkingMessageDiv.innerText = 'Thinking...';
@@ -144,18 +190,27 @@ messageForm.addEventListener('submit', async (e) => {
             body: JSON.stringify({ message })
         });
 
-        chatContainer.removeChild(thinkingMessageDiv);
+        // Remove the thinking message if it exists
+        if (thinkingMessageDiv && thinkingMessageDiv.parentNode === chatContainer) {
+            chatContainer.removeChild(thinkingMessageDiv);
+        }
 
         if (response.ok) {
             const data = await response.json();
             addMessage(data.response, "bot");
-            await loadLogs(); // update log section
+            
+            // Delay loading logs to ensure they've been updated in the backend
+            setTimeout(() => loadLogs(), 500);
         } else {
             const error = await response.json();
             addMessage(`Error: ${error.error || 'Unknown error'}`, "bot");
         }
     } catch (error) {
-        chatContainer.removeChild(thinkingMessageDiv);
+        // Remove the thinking message if it exists and hasn't been removed yet
+        if (thinkingMessageDiv && thinkingMessageDiv.parentNode === chatContainer) {
+            chatContainer.removeChild(thinkingMessageDiv);
+        }
+        
         addMessage("Network error. Please try again.", "bot");
         console.error("Chat error:", error);
     }
@@ -163,8 +218,14 @@ messageForm.addEventListener('submit', async (e) => {
 
 // Initial welcome message
 document.addEventListener('DOMContentLoaded', async () => {
-    addSystemMessage("Welcome to the RAG Demo! Enter a message to start chatting.");
+    // Check if elements exist before using them
+    if (chatContainer) {
+        addSystemMessage("Welcome to the RAG Demo! Enter a message to start chatting.");
+    } else {
+        console.error("Chat container element not found!");
+    }
+    
     await getLogCount(); // Get total log count on page load
-    loadLogs(); // Load logs initially
+    await loadLogs(); // Load logs initially
     startLivestream(); // Start livestream updates
 });
