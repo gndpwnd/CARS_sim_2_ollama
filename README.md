@@ -1,8 +1,9 @@
 # CARS_sim_2_ollama
-> [Swarm-Squad](https://github.com/Swarm-Squad)
+> [Swarm-Squad](https://github.com/Swarm-Squad){:target="_blank"}
+
 > using python 3.11
 
-## Setup Demos
+## Setup For Demos
 
 clone the repo
 
@@ -28,18 +29,24 @@ in a separate terminal, start the ollama server
 ollama run llama3.2:1b 
 ```
 
-run a ***basic_lin*** (basic linear) simulation
+### Linear Waypoints Mission Simulation
+
+files in ***basic_lin_demos*** can stand on their own
 ```
-python3 demos/basic_lin/jam_return_safe_coords.py
+python3 demos/basic_lin/1-jam_return_safe_coords.py
 ```
 
-run a ***basic_rag_demo*** (implememnting) simulation - need chat and data running at same time
+### Basic RAG Dmemo
+
+need a chatapp interface with ollama/LLM and data generator running at same time
 ```
 python3 demos/basic_rag_demo/chatapp.py
 python3 demos/basic_rag_demo/demo_rag_data.py
 ```
 
-the rag demo will download files to your system and create file, to view your file tree, but exclude directories that have lots of "noisy files"
+### Handling Automatically Downloaded Files
+
+the rag demo will download files to your system and create files for storage. All of these files should be accounted for in the [.gitignore](./.gitignore){:target="_blank"}, to view your file tree, but exclude directories that have lots of "noisy files"
 ```
 tree -I 'venv|__pycache__|.git'
 ```

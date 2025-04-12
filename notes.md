@@ -1,11 +1,1 @@
-tree -I 'venv|__pycache__|.git'
-
-Dry run of removing files - see what would be removed
-```
-git clean -xdn
-```
-
-Execute removal of files that match pattern in gitignore
-```
-git clean -xdf
-```
+I have the following files. the return_safe_coords file runs a simulation where agents move along a linear mission, if they get jammed they return to their safe coordinates, or their have a small algorithm to help them navigate. The other file llm_jam has the agents (when they get jammed) wait for input from a locally run llm before moving. What i want to do is combine their logic (avoid pyqt5 interface and just use matplotlib for simplicity) i want to have a boolean USE_LLM=Flase in which i can switch between the llm taking control when agents get jammed and the small algoritm taking control. for context, the small algorithm is denoted  a "simulated llm control" i want to record this algorithm as "fittest path" and incorporate its logic of returning to safe coordinates before asking an llm what to do. Overall, i want to combine these files, remove pyqt5 and all classes, and be able to select between the agents using the small fittest algorithm (tracking previous jam points and finding a new route) or using the llm through a boolean. otherwise the agents should switch between either the llm or the algorithm and their original path when they get jammed.
