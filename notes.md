@@ -1,3 +1,8 @@
+lmm is to slow for path finding - when dojg a jammed enviornment mission, have a path funding alorigthm to do low level manuevers but also allow llm injection, the llm is a massiv permoance bottleneck for path finding.
+
+have lmm chokse what movement functikns and what pathfinding functions to run, or given data give new coordinates.
+
+
 # change simulation that feeds data into the RAG to send agent x,y coordinates and an is_jammed "jammed" or "not jammed" through RAG
 
 I have the following files, chatapp.py provides a chat interface with an llm, rag store helps with storage using RAG, and demo_rag_data simply generates RAG data for a basic demo of RAG. now I want to swap out the demo rag data with an actual simulation llm_return_safe_coords. can you make all necessary changes to chatapp, rag_store, and llm_return_safe_coords for the llm_return_safe_coords to properly send agent x,y ccoordinates and an is_jammed "jammed" or "not jammed" through RAG? Do not use classes and provide the code for all three files. I will provide the code for the three files below.
