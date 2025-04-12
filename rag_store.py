@@ -24,46 +24,50 @@ def save_state():
     with open(logs_file, "wb") as f:
         pickle.dump(log_data, f)
 
-def add_log(log_id, log_text, metadata=None, agent_id=None):
+def add_log(log_id: str, log_text: str, metadata: dict, agent_id: str, comm_quality: float, position: tuple):
     """
-    Add a log entry to the FAISS index
-    
-    Parameters:
-    - log_id: Unique identifier for the log
-    - log_text: Text content of the log
-    - metadata: Dictionary containing position, daytime/nighttime percentages, and timestamp
-    - agent_id: Optional agent identifier
+    Add a log entry for a single agent with semantic indexing.
     """
-    if metadata is None:
-        metadata = {}
-    if agent_id is not None:
-        metadata["agent_id"] = agent_id
-    
-    embedding = model.encode([log_text])
-    index.add(embedding)  # Add embedding to FAISS index
+    global log_data, index
+
+    # Embed the log text
+    vec = model.encode([log_text])
+    index.add(vec)
+
     log_data.append({
-        "id": log_id,
+        "log_id": log_id,
         "text": log_text,
-        "metadata": metadata
+        "metadata": {
+            **metadata,
+            "agent_id": agent_id,
+            "log_id": log_id,
+            "comm_quality": comm_quality,
+            "position": position
+        }
     })
+
     save_state()
+
+
 
 def retrieve_relevant(query: str, k: int = 3):
     """
     Retrieve relevant log entries based on a query
-    
-    Parameters:
-    - query: Query text
-    - k: Number of results to return
-    
-    Returns:
-    - List of relevant log texts
     """
     if len(log_data) == 0:
         return []
     query_vec = model.encode([query])
     D, I = index.search(query_vec, k)
-    return [log_data[i]["text"] for i in I[0] if i < len(log_data)]
+    return [
+        {
+            "text": log_data[i]["text"],
+            "metadata": log_data[i]["metadata"],
+            "comm_quality": log_data[i]["metadata"].get("comm_quality"),
+            "position": log_data[i]["metadata"].get("position")
+        }
+        for i in I[0] if i < len(log_data)
+    ]
+
 
 def get_metadata(query: str, k: int = 3):
     """
@@ -81,6 +85,32 @@ def get_metadata(query: str, k: int = 3):
     query_vec = model.encode([query])
     D, I = index.search(query_vec, k)
     return [log_data[i]["metadata"] for i in I[0] if i < len(log_data)]
+
+def filter_logs_by_jammed(jammed=True):
+    """
+    Filter logs where jammed status matches the given value.
+    
+    Parameters:
+    - jammed: Boolean value to match jammed status
+    
+    Returns:
+    - List of matching log entries (each with text and metadata)
+    """
+    return [
+        {"text": log["text"], "metadata": log["metadata"]}
+        for log in log_data
+        if log["metadata"].get("jammed") == jammed
+    ]
+
+def clear_store():
+    """
+    Clear the FAISS index and all stored logs.
+    Useful for development or resetting the RAG store.
+    """
+    global log_data, index
+    log_data = []
+    index = faiss.IndexFlatL2(384)
+    save_state()
 
 def get_log_data():
     return log_data

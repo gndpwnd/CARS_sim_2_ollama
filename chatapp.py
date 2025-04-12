@@ -89,18 +89,26 @@ def chat():
 def get_logs():
     try:
         logs = get_log_data()
-        print("Fetched logs:", logs)  # Debugging output
+        print("Fetched logs:", logs)
 
-        logs_sorted = sorted(logs, key=lambda x: x["metadata"]["timestamp"], reverse=True)
-        print("Sorted logs:", logs_sorted)  # Debugging output
+        # Provide a fallback timestamp if missing
+        logs_sorted = sorted(
+            logs,
+            key=lambda x: x.get("metadata", {}).get("timestamp", x.get("log_id", "")),
+            reverse=True
+        )
+
+        print("Sorted logs:", logs_sorted)
 
         return jsonify({
-            "logs": logs_sorted[:20],  # Limit to the latest 20 logs
+            "logs": logs_sorted[:20],
             "has_more": len(logs_sorted) > 20
         })
     except Exception as e:
         print("Error in /logs route:", e)
         return jsonify({"error": "Internal server error"}), 500
+
+
 
 
 if __name__ == '__main__':

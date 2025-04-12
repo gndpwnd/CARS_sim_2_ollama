@@ -7,16 +7,14 @@ from matplotlib.animation import FuncAnimation
 import ollama
 import re
 
-
-import time
-import uuid
+import datetime
 from rag_store import add_log  # Assuming the RAG store methods are properly imported
 
 
 
 # Toggle between LLM and algorithm-based control
 USE_LLM = True  # Set to True to use LLM, False to use algorithm
-
+LLM_MODEL = "llama3.2:1b"
 
 RAG_UPDATE_FREQUENCY = 5  # Log agent data every 5 iterations (same as buffer size)
 iteration_count = 0  # Track the number of iterations
@@ -67,30 +65,48 @@ animation_running = True
 animation_object = None
 
 
-def log_batch_of_data(agent_data):
+def log_batch_of_data(agent_histories: dict, prefix="batch"):
     """
-    Log a batch of data to the FAISS RAG store for all agents' positions, communication quality, and jammed status.
+    Log a batch of data from all agents, one log per agent per data point.
 
     Parameters:
-    - agent_data: A dictionary where the key is agent_id, and the value is a list of positions and qualities over iterations.
+    - agent_histories: dict of agent_id -> list of data points
+    - prefix: a prefix to create unique log_id (e.g., 'iteration_5')
     """
-    print("[LOGGING] Logging batch of data to RAG store")
-    for agent_id, history in agent_data.items():
-        for data in history:
-            # Each data point includes position, communication quality, and jammed status
-            log_id = str(uuid.uuid4())  # Create a unique log ID
-            log_text = f"Agent {agent_id} at position {data['position']} with communication quality {data['communication_quality']}, Jammed: {data['jammed']}"
-            
-            # Metadata to store position, communication quality, and jammed status
+    for agent_id, history in agent_histories.items():
+        prev_entry = None
+        for i, data in enumerate(history):
+            # Optional deduplication
+            if data == prev_entry:
+                continue
+            prev_entry = data
+
+            # Generate log ID
+            log_id = f"{prefix}-{agent_id}-{i}"
+
+            # Build natural language log text
+            log_text = (
+                f"Agent {agent_id} is at position {data['position']}. "
+                f"Communication quality: {data['communication_quality']}. "
+                f"Status: {'Jammed' if data['jammed'] else 'Clear'}."
+            )
+
+            # Get timestamp and communication quality
+            timestamp = datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ')
+            communication_quality = data['communication_quality']
+            position = data['position']
+            jammed_status = data['jammed']
+
+            # Construct the metadata dictionary
             metadata = {
-                "position": data['position'],
-                "communication_quality": data['communication_quality'],
-                "jammed": data['jammed'],
-                "timestamp": time.time()  # Timestamp for log
+                'timestamp': timestamp,
+                'agent_id': agent_id,
+                'comm_quality': communication_quality,
+                'position': position
             }
 
-            # Store the log in the FAISS-based RAG store
-            add_log(log_id, log_text, metadata=metadata, agent_id=agent_id)
+            # Add log entry with detailed metadata
+            add_log(log_id, log_text, metadata, agent_id)
 
 def round_coord(value):
     """Round coordinates to 3 decimal places"""
@@ -263,7 +279,7 @@ def llm_make_move(agent_id):
         try:
             # Send the prompt with a timeout
             response = ollama.chat(
-                model="llama3.2:1b",
+                model=LLM_MODEL,
                 messages=[{"role": "user", "content": prompt}]
             )
             

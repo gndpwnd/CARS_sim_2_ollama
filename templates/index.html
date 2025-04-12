@@ -7,21 +7,23 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <!-- Left side: RAG Feed -->
-    <div id="rag-feed">
-        <h2>RAG Feed</h2>
-        <div id="log-container"></div>
-        <div id="loading"></div> <!-- Loading div added here -->
-    </div>
+    <div id="main-container">
+        <!-- Left side: RAG Feed -->
+        <div id="rag-feed">
+            <h2>RAG Feed</h2>
+            <div id="log-container"></div>
+            <div id="loading"></div>
+        </div>
 
-    <!-- Right side: Chat Container -->
-    <div id="chat-container">
-        <h2>AI Chat</h2>
-        <div id="chat-chat-container"></div>
-        <form id="message-form">
-            <input type="text" id="message-input" placeholder="Type your message..." required>
-            <button type="submit">Send</button>
-        </form>
+        <!-- Right side: Chat Container -->
+        <div id="chat-container">
+            <h2>AI Chat</h2>
+            <div id="chat-chat-container"></div>
+            <form id="message-form">
+                <input type="text" id="message-input" placeholder="Type your message..." required>
+                <button type="submit">Send</button>
+            </form>
+        </div>
     </div>
 
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>

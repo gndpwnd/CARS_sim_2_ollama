@@ -6,9 +6,9 @@ const loadingDiv = document.getElementById('loading');
 
 let loading = false;
 let hasMore = true;
-let lastLogTimestamp = null; // Keep track of last log timestamp displayed
+let lastLogTimestamp = null;
+const seenLogIds = new Set(); // ✅ Track unique logs
 
-// Function to add messages to chat container
 function addMessage(message, type) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `${type}-message`;
@@ -17,16 +17,44 @@ function addMessage(message, type) {
     chatContainer.scrollTop = chatContainer.scrollHeight;
 }
 
-// Function to add logs to log container
-function addLog(message) {
+function addLog(log) {
+    if (seenLogIds.has(log.log_id)) return; // ✅ Prevent duplicates
+    seenLogIds.add(log.log_id);
+
+    const {
+        text,
+        metadata = {}
+    } = log;
+
+    const {
+        agent_id = 'N/A',
+        timestamp = 'Unknown Time',
+        jammed = false,
+        communication_quality = 'N/A',
+        log_id = '',
+    } = metadata;
+
     const logDiv = document.createElement('div');
     logDiv.className = 'log-message';
-    logDiv.innerText = message;
+
+    logDiv.innerHTML = `
+        <div class="log-header">
+            <strong>Agent ${agent_id}</strong>
+            <span class="log-time">${new Date(timestamp).toLocaleString()}</span>
+        </div>
+        <div class="log-body">${text}</div>
+        <div class="log-meta">
+            <span class="log-id">#${log_id}</span>
+            <span class="log-status ${jammed ? 'jammed' : 'clear'}">
+                ${jammed ? '🚫 Jammed' : '✅ Clear'}
+            </span>
+            <span class="log-quality">Comm: ${communication_quality}</span>
+        </div>
+    `;
+
     logContainer.appendChild(logDiv);
     logContainer.scrollTop = logContainer.scrollHeight;
 }
-
-// Function to load latest logs
 
 async function loadLogs() {
     if (loading || !hasMore) return;
@@ -37,17 +65,13 @@ async function loadLogs() {
         const response = await fetch('/logs');
         const data = await response.json();
 
-        console.log("Logs response:", data);
-
         if (Array.isArray(data.logs) && data.logs.length > 0) {
             data.logs.reverse().forEach(log => {
-                const role = log?.metadata?.role || 'unknown';
-                const time = log?.metadata?.timestamp || 'unknown time';
+                const time = log?.metadata?.timestamp || 'unknown';
 
-                // Only add logs newer than the latest we've seen
                 if (!lastLogTimestamp || new Date(time) > new Date(lastLogTimestamp)) {
-                    addLog(`${role} (${time}): ${log.text}`);
-                    lastLogTimestamp = time;  // update the latest timestamp seen
+                    addLog(log);
+                    lastLogTimestamp = time;
                 }
             });
         }
@@ -66,8 +90,6 @@ async function loadLogs() {
     }
 }
 
-
-// Handle message form submit (user chatting)
 messageForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
@@ -79,7 +101,7 @@ messageForm.addEventListener('submit', async (e) => {
 
     const thinkingMessageDiv = document.createElement('div');
     thinkingMessageDiv.className = 'bot-message thinking';
-    thinkingMessageDiv.innerText = 'Thinking';
+    thinkingMessageDiv.innerText = 'Thinking...';
     chatContainer.appendChild(thinkingMessageDiv);
     chatContainer.scrollTop = chatContainer.scrollHeight;
 
@@ -95,7 +117,7 @@ messageForm.addEventListener('submit', async (e) => {
         if (response.ok) {
             const data = await response.json();
             addMessage(data.response, "bot");
-            await loadLogs();  // ✅ Reload logs after bot responds
+            await loadLogs(); // ✅ Reload logs after response
         } else {
             const error = await response.json();
             addMessage(`Error: ${error.error || 'Unknown error'}`, "bot");
@@ -108,8 +130,6 @@ messageForm.addEventListener('submit', async (e) => {
     chatContainer.scrollTop = chatContainer.scrollHeight;
 });
 
-// Initial load of logs when the page loads
+// Initial load and polling
 loadLogs();
-
-// ✅ Periodically poll for new logs every 5 seconds
 setInterval(loadLogs, 5000);
