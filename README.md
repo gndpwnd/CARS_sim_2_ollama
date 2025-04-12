@@ -1,5 +1,5 @@
 # CARS_sim_2_ollama
-> [Swarm-Squad](https://github.com/Swarm-Squad){:target="_blank"}
+> <a href="https://github.com/Swarm-Squad" target="_blank" rel="noopener noreferrer">Swarm-Squad</a>
 
 > using python 3.11
 
