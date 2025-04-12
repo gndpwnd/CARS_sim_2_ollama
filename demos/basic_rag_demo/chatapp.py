@@ -4,7 +4,6 @@ import traceback
 import datetime
 import hashlib
 
-# Try importing the modules with error handling
 try:
     from rag_store import add_log, retrieve_relevant
     print("Successfully imported rag_store")

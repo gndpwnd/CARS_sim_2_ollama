@@ -1,11 +1,9 @@
-import time
 import math
 import random
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from matplotlib.animation import FuncAnimation
 import ollama
-import threading
 import re
 
 llm_responses = {}

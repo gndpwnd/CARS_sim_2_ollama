@@ -1,16 +1,63 @@
 # CARS_sim_2_ollama
 
+> using python 3.11
+
 ## Setup Demos
 
 clone the repo
+
 ```
 git clone https://github.com/gndpwnd/CARS_sim_2_ollama.git; cd CARS_sim_2_ollama
 ```
 
-setup venv and install dependencies
+setup venv
+
 ```
-python3 -m venv venv; source venv/bin/activate; python -m pip install --upgrade pip; pip install -r requirements.txt
+python3.11 -m venv venv; source venv/bin/activate
 ```
+
+install requirements
+
+```
+pip install --upgrade pip; pip install -r requirements.txt
+```
+
+in a separate terminal, start the ollama server
+
+```
+ollama run llama3.2:1b 
+```
+
+run a ***basic_lin*** (basic linear) simulation
+```
+python3 demos/basic_lin/jam_return_safe_coords.py
+```
+
+run a ***basic_rag_demo*** (implememnting) simulation - need chat and data running at same time
+```
+python3 demos/basic_rag_demo/chatapp.py
+python3 demos/basic_rag_demo/demo_rag_data.py
+```
+
+the rag demo will download files to your system and create file, to view your file tree, but exclude directories that have lots of "noisy files"
+```
+tree -I 'venv|__pycache__|.git'
+```
+
+these files can get large, so if you want to remove them, you can run the following command to see what would be removed. In case you don't want to remove the venv, you can exclude it.
+```
+git clean -xdn
+git clean -xdn -e venv/
+```
+
+and then run the following command to remove them. however if you don't want to remove ***venv/*** you can exclude it
+```
+git clean -xdf
+git clean -xdf -e venv/
+```
+
+
+# TODO
 
 ## Basic Simulation
 
@@ -63,8 +110,8 @@ python3 -m venv venv; source venv/bin/activate; python -m pip install --upgrade 
 
 ## User-LLM-Agent Interaction (Highest Abstraction)
 
-- [ ] User can query info on agents from LLM context
-	- [ ] Agent status, position
+- [x] User can query info on agents from LLM context
+	- [x] Agent status, position
 	- [ ] Progress of mission
 - [ ] User-LLM-Agent Control
 	- [ ] User can control agent through llm (override)

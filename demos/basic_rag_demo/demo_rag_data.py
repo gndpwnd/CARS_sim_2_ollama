@@ -17,7 +17,7 @@ os.environ['HF_HOME'] = FAISS_DIR
 
 # Constants
 MOVE_SPEED = 50  # Define MOVE_SPEED to control the speed of movement
-FREQUENCY = 0.1  # Controls the speed of movement along the sine wave
+FREQUENCY = 0.2  # Controls the speed of movement along the sine wave
 AMPLITUDE = 1.0  # Amplitude of the sine wave
 OFFSET = 0.0  # Vertical offset of the sine wave
 UPDATES_PER_SECOND = 1  # How many updates per second
