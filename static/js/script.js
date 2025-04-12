@@ -7,8 +7,10 @@ const loadingDiv = document.getElementById('loading');
 let loading = false;
 let hasMore = true;
 let lastLogTimestamp = null;
+let totalLogs = 0; // Track total number of logs
 const seenLogIds = new Set();
 
+// Function to add a message to the chat
 function addMessage(message, type) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `${type}-message`;
@@ -17,10 +19,12 @@ function addMessage(message, type) {
     chatContainer.scrollTop = chatContainer.scrollHeight;
 }
 
+// Function to add a system message
 function addSystemMessage(message) {
     addMessage(message, 'bot');
 }
 
+// Function to add log to log container
 function addLog(log) {
     if (seenLogIds.has(log.log_id)) return;
     seenLogIds.add(log.log_id);
@@ -56,37 +60,66 @@ function addLog(log) {
     logContainer.scrollTop = logContainer.scrollHeight;
 }
 
-async function loadLogs() {
-    if (loading || !hasMore) return;
-    loading = true;
-    loadingDiv.textContent = "Loading...";
-
+// Fetch the current number of logs
+async function getLogCount() {
     try {
-        const response = await fetch('/logs');
+        const response = await fetch('/logs/count');
         const data = await response.json();
+        totalLogs = data.count || 0; // Store the total logs count
+    } catch (e) {
+        console.error("Error fetching log count:", e);
+    }
+}
 
-        if (Array.isArray(data.logs) && data.logs.length > 0) {
-            data.logs.reverse().forEach(log => {
-                const time = log?.metadata?.timestamp || 'unknown';
-                if (!lastLogTimestamp || new Date(time) > new Date(lastLogTimestamp)) {
-                    addLog(log);
-                    lastLogTimestamp = time;
-                }
-            });
-        }
-
-        if (!data.has_more) {
-            hasMore = false;
-            loadingDiv.textContent = "No more logs.";
+// Fetch a specific log by its index
+async function getLogByNumber(logNumber) {
+    try {
+        const response = await fetch(`/logs/${logNumber}`);
+        const data = await response.json();
+        if (data.log) {
+            addLog(data.log); // Add the log to the container
         } else {
-            loadingDiv.textContent = "";
+            console.error(`Log with number ${logNumber} not found.`);
         }
     } catch (e) {
-        loadingDiv.textContent = "Error loading logs.";
-        console.error("Error while loading logs:", e);
-    } finally {
-        loading = false;
+        console.error("Error fetching specific log:", e);
     }
+}
+
+// Livestream function to show the most recent logs
+async function startLivestream() {
+    setInterval(async () => {
+        if (loading || !hasMore) return;
+        loading = true;
+        loadingDiv.textContent = "Loading...";
+
+        try {
+            const response = await fetch('/logs');
+            const data = await response.json();
+
+            if (Array.isArray(data.logs) && data.logs.length > 0) {
+                data.logs.reverse().forEach(log => {
+                    const time = log?.metadata?.timestamp || 'unknown';
+                    if (!lastLogTimestamp || new Date(time) > new Date(lastLogTimestamp)) {
+                        addLog(log);
+                        lastLogTimestamp = time;
+                    }
+                });
+            }
+
+            if (!data.has_more) {
+                hasMore = false;
+                loadingDiv.textContent = "No more logs.";
+            } else {
+                loadingDiv.textContent = "";
+            }
+        } catch (e) {
+            loadingDiv.textContent = "Error loading logs.";
+            console.error("Error while loading logs:", e);
+        } finally {
+            loading = false;
+        }
+    }, 3000); // Update every 3 seconds
 }
 
 messageForm.addEventListener('submit', async (e) => {
@@ -129,7 +162,9 @@ messageForm.addEventListener('submit', async (e) => {
 });
 
 // Initial welcome message
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     addSystemMessage("Welcome to the RAG Demo! Enter a message to start chatting.");
-    loadLogs();
+    await getLogCount(); // Get total log count on page load
+    loadLogs(); // Load logs initially
+    startLivestream(); // Start livestream updates
 });

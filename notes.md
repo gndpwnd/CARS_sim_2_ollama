@@ -17,3 +17,6 @@ I have the following script that is a simulation. i want to incoporate RAG funct
 I have the following chat app to interact with llm and corresponding RAG data, I am trying to get the RAG feed to automatically update to show logs every few seconds. the rag feed updates when i refresh the page, but not by itself while i am chatting with the llm. I am able to see logs be populated, but not logs that are new since refreshing the page. please factor in these changes.
 
 
+
+
+i want to implement chunking for the logs, this way as more data is added to Rag, and it goes over a FILE_SIZE_LIMIT = # size of file limit in megabytes, a new file is created. from here, I want to be able to query logs and only the latest log file is queried, but also the number of log files is returned, this way i could have in my app a button to "see previous log" and view entries from those logs. don't use classes.

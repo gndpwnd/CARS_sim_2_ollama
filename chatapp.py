@@ -1,8 +1,11 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, Response
 import sys
 import traceback
 import hashlib
 from datetime import datetime
+import time
+
+LLM_MODEL = "llama3.2:1b"
 
 try:
     from rag_store import get_log_data, add_log, retrieve_relevant
@@ -54,7 +57,7 @@ def chat():
 
         prompt = f"Context:\n{context}\n\nUser: {user_message}"
         response = ollama.chat(
-            model="tinyllama:1.1b",
+            model=LLM_MODEL,
             messages=[{"role": "user", "content": prompt}]
         )
         ollama_response = response.get('message', {}).get('content', "Sorry, I didn't understand that.")
@@ -90,6 +93,63 @@ def get_logs():
         })
     except Exception as e:
         print("Error in /logs route:", e)
+        return jsonify({"error": "Internal server error"}), 500
+
+@app.route("/log_count")
+def log_count():
+    """
+    Return the current number of logs in the system.
+    """
+    try:
+        logs = get_log_data()
+        return jsonify({"log_count": len(logs)})
+    except Exception as e:
+        print("Error in /log_count route:", e)
+        return jsonify({"error": "Internal server error"}), 500
+
+@app.route("/stream_logs")
+def stream_logs():
+    """
+    Stream live logs as they are added to the system.
+    """
+    def generate():
+        while True:
+            logs = get_log_data()
+            logs_sorted = sorted(
+                logs,
+                key=lambda x: x.get("metadata", {}).get("timestamp", x.get("log_id", "")),
+                reverse=True
+            )
+            latest_log = logs_sorted[0] if logs_sorted else None
+            if latest_log:
+                yield f"data: {latest_log}\n\n"
+            time.sleep(1)  # Adjust the delay between streams if needed
+
+    return Response(generate(), content_type='text/event-stream')
+
+@app.route("/log_chunk/<int:chunk_num>")
+def get_log_chunk(chunk_num):
+    """
+    Get a specific chunk of logs by chunk number.
+    Each chunk will be 20 logs by default, but you can adjust this if needed.
+    """
+    try:
+        logs = get_log_data()
+        start_index = chunk_num * 20
+        end_index = start_index + 20
+        logs_sorted = sorted(
+            logs,
+            key=lambda x: x.get("metadata", {}).get("timestamp", x.get("log_id", "")),
+            reverse=True
+        )
+        chunk = logs_sorted[start_index:end_index]
+
+        return jsonify({
+            "logs": chunk,
+            "has_more": len(logs_sorted) > end_index
+        })
+    except Exception as e:
+        print("Error in /log_chunk route:", e)
         return jsonify({"error": "Internal server error"}), 500
 
 if __name__ == '__main__':
