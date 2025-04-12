@@ -65,14 +65,58 @@ animation_running = True
 animation_object = None
 
 
+def convert_numpy_coords(obj):
+    """
+    Convert numpy data types to standard Python types for JSON serialization.
+    
+    Args:
+        obj: Any Python object that might contain numpy data types
+        
+    Returns:
+        Object with numpy types converted to standard Python types
+    """
+    # Handle numpy arrays
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    
+    # Handle numpy scalars
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    
+    if isinstance(obj, (np.floating,)):
+        return float(obj)
+    
+    if isinstance(obj, (np.complexfloating,)):
+        return complex(obj)
+    
+    if isinstance(obj, (np.bool_, bool)):
+        return bool(obj)
+    
+    # Handle tuples containing numpy types
+    if isinstance(obj, tuple):
+        return tuple(convert_numpy_coords(item) for item in obj)
+        
+    # Handle lists containing numpy types
+    if isinstance(obj, list):
+        return [convert_numpy_coords(item) for item in obj]
+        
+    # Handle dictionaries containing numpy types
+    if isinstance(obj, dict):
+        return {key: convert_numpy_coords(value) for key, value in obj.items()}
+        
+    # Return other types unchanged
+    return obj
+
+
 def log_batch_of_data(agent_histories: dict, prefix="batch"):
     """
     Log a batch of data from all agents, one log per agent per data point.
-
+    
     Parameters:
     - agent_histories: dict of agent_id -> list of data points
     - prefix: a prefix to create unique log_id (e.g., 'iteration_5')
     """
+    print(f"[LOGGING] Logging batch of data with prefix: {prefix}")
     for agent_id, history in agent_histories.items():
         prev_entry = None
         for i, data in enumerate(history):
@@ -93,8 +137,8 @@ def log_batch_of_data(agent_histories: dict, prefix="batch"):
 
             # Get timestamp and communication quality
             timestamp = datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ')
-            communication_quality = data['communication_quality']
-            position = data['position']
+            communication_quality = convert_numpy_coords(data['communication_quality'])
+            position = convert_numpy_coords(data['position'])
             jammed_status = data['jammed']
 
             # Construct the metadata dictionary
@@ -102,11 +146,13 @@ def log_batch_of_data(agent_histories: dict, prefix="batch"):
                 'timestamp': timestamp,
                 'agent_id': agent_id,
                 'comm_quality': communication_quality,
-                'position': position
+                'position': position,
+                'jammed': jammed_status
             }
 
-            # Add log entry with detailed metadata
-            add_log(log_id, log_text, metadata, agent_id)
+            # Add log entry with detailed metadata - only passing 3 arguments now
+            add_log(log_id, log_text, metadata)
+
 
 def round_coord(value):
     """Round coordinates to 3 decimal places"""

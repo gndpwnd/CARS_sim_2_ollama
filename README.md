@@ -63,6 +63,31 @@ git clean -xdf
 git clean -xdf -e venv/
 ```
 
+### Setting up a folder to Share Between Host-Machine and VM
+
+> using VMware workstation pro
+
+ - Select your VM
+ - go to that VM's settings
+	or
+ - if your VM is running, go to "VM" in the menu bar
+ - select "Settings"
+  
+ - select "Options" tab
+ - select "Shared Folders"
+ - select "Always enabled"
+ - select "Add" to add a new folder
+ - select the folder you want to share
+ - click "OK"
+
+The folder should mount to your VM at ***/mnt/hgfs/<folder_name>***. You can use this folder to share files between your host machine and your VM.
+
+Making a symbolic link to that folder so you can access it from your working directory
+
+```
+ln -s /mnt/hgfs/<folder_name> <link_name>
+ln -s /mnt/hgfs/shared-folder host-share
+```
 
 # TODO
 

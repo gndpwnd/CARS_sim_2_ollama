@@ -1,5 +1,3 @@
-# The chatapp
-
 from flask import Flask, render_template, request, jsonify
 import sys
 import traceback
@@ -30,7 +28,6 @@ except Exception as e:
 
 app = Flask(__name__)
 
-# Route for serving the HTML template
 @app.route('/')
 def index():
     try:
@@ -40,7 +37,6 @@ def index():
         print(error_msg)
         return error_msg, 500
 
-# Add a test route to verify the server is running
 @app.route('/test')
 def test():
     return "Flask server is running correctly!"
@@ -52,11 +48,10 @@ def chat():
         if not user_message:
             return jsonify({'error': 'No message provided'}), 400
 
-        # Retrieve relevant logs from RAG
+        # Get RAG context
         relevant_logs = retrieve_relevant(user_message, k=3)
-        context = "\n".join(relevant_logs)
+        context = "\n".join(log.get("text", "") for log in relevant_logs)
 
-        # Send the user message and context to Ollama
         prompt = f"Context:\n{context}\n\nUser: {user_message}"
         response = ollama.chat(
             model="tinyllama:1.1b",
@@ -64,23 +59,17 @@ def chat():
         )
         ollama_response = response.get('message', {}).get('content', "Sorry, I didn't understand that.")
 
-        # Add both user message and Ollama response to the RAG store
-        current_timestamp = datetime.now().isoformat()
-        message_hash = hashlib.md5(user_message.encode()).hexdigest()[:8]
-        add_log(
-            log_id=f"user-{message_hash}",
-            log_text=user_message,
-            metadata={"role": "user", "timestamp": current_timestamp}
-        )
+        # Log both user message and bot response
+        timestamp = datetime.now().isoformat()
+
+        user_hash = hashlib.md5(user_message.encode()).hexdigest()[:8]
         response_hash = hashlib.md5(ollama_response.encode()).hexdigest()[:8]
-        add_log(
-            log_id=f"ollama-{response_hash}",
-            log_text=ollama_response,
-            metadata={"role": "ollama", "timestamp": current_timestamp}
-        )
+
+        add_log(f"user-{user_hash}", user_message, {"role": "user", "timestamp": timestamp})
+        add_log(f"ollama-{response_hash}", ollama_response, {"role": "ollama", "timestamp": timestamp})
 
         return jsonify({'response': ollama_response})
-    
+
     except Exception as e:
         print(f"ERROR: {e}")
         return jsonify({'error': str(e)}), 500
@@ -89,16 +78,11 @@ def chat():
 def get_logs():
     try:
         logs = get_log_data()
-        print("Fetched logs:", logs)
-
-        # Provide a fallback timestamp if missing
         logs_sorted = sorted(
             logs,
             key=lambda x: x.get("metadata", {}).get("timestamp", x.get("log_id", "")),
             reverse=True
         )
-
-        print("Sorted logs:", logs_sorted)
 
         return jsonify({
             "logs": logs_sorted[:20],
@@ -108,13 +92,8 @@ def get_logs():
         print("Error in /logs route:", e)
         return jsonify({"error": "Internal server error"}), 500
 
-
-
-
 if __name__ == '__main__':
     print("Starting Flask app...")
     print(f"Python version: {sys.version}")
-    print("Make sure you have created an 'index.html' file in the 'templates' folder")
-    print("Access the web interface at http://127.0.0.1:5000")
-    print("To test if the server is running correctly, visit http://127.0.0.1:5000/test")
+    print("Visit http://127.0.0.1:5000")
     app.run(debug=True)

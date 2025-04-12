@@ -7,7 +7,7 @@ const loadingDiv = document.getElementById('loading');
 let loading = false;
 let hasMore = true;
 let lastLogTimestamp = null;
-const seenLogIds = new Set(); // ✅ Track unique logs
+const seenLogIds = new Set();
 
 function addMessage(message, type) {
     const messageDiv = document.createElement('div');
@@ -17,15 +17,15 @@ function addMessage(message, type) {
     chatContainer.scrollTop = chatContainer.scrollHeight;
 }
 
+function addSystemMessage(message) {
+    addMessage(message, 'bot');
+}
+
 function addLog(log) {
-    if (seenLogIds.has(log.log_id)) return; // ✅ Prevent duplicates
+    if (seenLogIds.has(log.log_id)) return;
     seenLogIds.add(log.log_id);
 
-    const {
-        text,
-        metadata = {}
-    } = log;
-
+    const { text, metadata = {} } = log;
     const {
         agent_id = 'N/A',
         timestamp = 'Unknown Time',
@@ -68,7 +68,6 @@ async function loadLogs() {
         if (Array.isArray(data.logs) && data.logs.length > 0) {
             data.logs.reverse().forEach(log => {
                 const time = log?.metadata?.timestamp || 'unknown';
-
                 if (!lastLogTimestamp || new Date(time) > new Date(lastLogTimestamp)) {
                     addLog(log);
                     lastLogTimestamp = time;
@@ -117,19 +116,20 @@ messageForm.addEventListener('submit', async (e) => {
         if (response.ok) {
             const data = await response.json();
             addMessage(data.response, "bot");
-            await loadLogs(); // ✅ Reload logs after response
+            await loadLogs(); // update log section
         } else {
             const error = await response.json();
             addMessage(`Error: ${error.error || 'Unknown error'}`, "bot");
         }
     } catch (error) {
         chatContainer.removeChild(thinkingMessageDiv);
-        addMessage(`Error: ${error.message}`, "bot");
+        addMessage("Network error. Please try again.", "bot");
+        console.error("Chat error:", error);
     }
-
-    chatContainer.scrollTop = chatContainer.scrollHeight;
 });
 
-// Initial load and polling
-loadLogs();
-setInterval(loadLogs, 5000);
+// Initial welcome message
+document.addEventListener('DOMContentLoaded', () => {
+    addSystemMessage("Welcome to the RAG Demo! Enter a message to start chatting.");
+    loadLogs();
+});
