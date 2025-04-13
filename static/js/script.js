@@ -26,18 +26,14 @@ function addSystemMessage(message) {
 
 // Function to add log to log container
 function addLog(log) {
-    if (seenLogIds.has(log.log_id)) return;
+    if (seenLogIds.has(log.log_id)) {
+        console.log(`Log ${log.log_id} already seen, skipping...`);
+        return; // Skip this log if already seen
+    }
     seenLogIds.add(log.log_id);
 
     const { text, metadata = {} } = log;
-    const {
-        agent_id = 'N/A',
-        role = 'N/A',
-        timestamp = 'Unknown Time',
-        jammed = false,
-        communication_quality = 'N/A',
-        log_id = '',
-    } = metadata;
+    const { agent_id = 'N/A', role = 'N/A', timestamp = 'Unknown Time', jammed = false, communication_quality = 'N/A', log_id = '' } = metadata;
 
     const logDiv = document.createElement('div');
     logDiv.className = 'log-message';
@@ -68,20 +64,20 @@ function addLog(log) {
     logContainer.scrollTop = logContainer.scrollHeight;
 }
 
+
 // Fetch the current number of logs
 async function getLogCount() {
     try {
-        // Use the correct route matching your Flask backend
         const response = await fetch('/log_count');
         const data = await response.json();
-        totalLogs = data.log_count || 0; // Match the field name from your Flask route
+        totalLogs = data.log_count || 0;
         console.log(`Total logs: ${totalLogs}`);
     } catch (e) {
         console.error("Error fetching log count:", e);
     }
 }
 
-// Load logs function - this was missing in your original code
+// Load logs function
 async function loadLogs() {
     if (loading) return;
     loading = true;
@@ -94,27 +90,25 @@ async function loadLogs() {
         const response = await fetch('/logs');
         const data = await response.json();
 
+        console.log(`Received ${data.logs?.length || 0} logs from server`);
+        
         if (Array.isArray(data.logs) && data.logs.length > 0) {
-            // Clear existing logs if needed
-            // logContainer.innerHTML = '';
+            logContainer.innerHTML = '';
+            seenLogIds.clear();
             
             data.logs.forEach(log => {
+                console.log(`Adding log: ${log.log_id}`);
                 addLog(log);
-                if (log?.metadata?.timestamp) {
-                    const logTime = new Date(log.metadata.timestamp);
-                    if (!lastLogTimestamp || logTime > new Date(lastLogTimestamp)) {
-                        lastLogTimestamp = log.metadata.timestamp;
-                    }
-                }
             });
             
             hasMore = data.has_more;
+            console.log(`Added ${data.logs.length} logs to the container`);
         } else {
             console.log("No logs found or empty data returned");
         }
         
         if (loadingDiv) {
-            loadingDiv.textContent = hasMore ? "" : "No more logs.";
+            loadingDiv.textContent = hasMore ? "Load more..." : "No more logs.";
         }
     } catch (e) {
         console.error("Error loading logs:", e);
@@ -146,9 +140,7 @@ async function startLivestream() {
         if (loading) return;
         
         try {
-            await getLogCount(); // Update the log count
-            
-            // Only fetch new logs if we're not already loading
+            await getLogCount();
             const response = await fetch('/logs');
             const data = await response.json();
 
@@ -164,7 +156,7 @@ async function startLivestream() {
         } catch (e) {
             console.error("Error during livestream update:", e);
         }
-    }, 3000); // Update every 3 seconds
+    }, 3000);
 }
 
 messageForm.addEventListener('submit', async (e) => {
@@ -176,7 +168,6 @@ messageForm.addEventListener('submit', async (e) => {
     addMessage(message, 'user');
     messageInput.value = '';
 
-    // Create a temporary "thinking" message
     const thinkingMessageDiv = document.createElement('div');
     thinkingMessageDiv.className = 'bot-message thinking';
     thinkingMessageDiv.innerText = 'Thinking...';
@@ -190,7 +181,6 @@ messageForm.addEventListener('submit', async (e) => {
             body: JSON.stringify({ message })
         });
 
-        // Remove the thinking message if it exists
         if (thinkingMessageDiv && thinkingMessageDiv.parentNode === chatContainer) {
             chatContainer.removeChild(thinkingMessageDiv);
         }
@@ -198,34 +188,29 @@ messageForm.addEventListener('submit', async (e) => {
         if (response.ok) {
             const data = await response.json();
             addMessage(data.response, "bot");
-            
-            // Delay loading logs to ensure they've been updated in the backend
             setTimeout(() => loadLogs(), 500);
         } else {
             const error = await response.json();
             addMessage(`Error: ${error.error || 'Unknown error'}`, "bot");
         }
     } catch (error) {
-        // Remove the thinking message if it exists and hasn't been removed yet
         if (thinkingMessageDiv && thinkingMessageDiv.parentNode === chatContainer) {
             chatContainer.removeChild(thinkingMessageDiv);
         }
-        
         addMessage("Network error. Please try again.", "bot");
         console.error("Chat error:", error);
     }
 });
 
-// Initial welcome message
+// Initial welcome message and log fetch
 document.addEventListener('DOMContentLoaded', async () => {
-    // Check if elements exist before using them
     if (chatContainer) {
         addSystemMessage("Welcome to the RAG Demo! Enter a message to start chatting.");
     } else {
         console.error("Chat container element not found!");
     }
     
-    await getLogCount(); // Get total log count on page load
-    await loadLogs(); // Load logs initially
-    startLivestream(); // Start livestream updates
+    await getLogCount();
+    await loadLogs();
+    startLivestream();
 });

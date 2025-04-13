@@ -1,26 +1,22 @@
+# This is a simple Flask app that serves as a chat interface for an LLM (Large Language Model) and displaying logs.
 from flask import Flask, render_template, request, jsonify, Response
 import sys
 import traceback
 import hashlib
 from datetime import datetime
 import time
+import pickle
 
-LLM_MODEL = "llama3.2:1b"
-
-try:
-    from rag_store import get_log_data, add_log, retrieve_relevant
-    print("Successfully imported rag_store")
-except Exception as e:
-    print(f"ERROR importing rag_store: {e}")
-    traceback.print_exc()
+from llm_config import get_ollama_client, get_model_name
+ollama = get_ollama_client()
+LLM_MODEL = get_model_name()
 
 try:
-    import ollama
-    print("Successfully imported ollama")
+    from rag_store import get_log_data, add_log, retrieve_relevant, get_chunk_path, get_latest_chunk_index
+    print("Successfully imported rag_store functions")
 except Exception as e:
-    print(f"ERROR importing ollama: {e}")
+    print(f"ERROR importing from rag_store: {e}")
     traceback.print_exc()
-    print("Note: If ollama isn't installed, run: pip install ollama")
 
 try:
     import numpy as np
@@ -51,11 +47,47 @@ def chat():
         if not user_message:
             return jsonify({'error': 'No message provided'}), 400
 
-        # Get RAG context
-        relevant_logs = retrieve_relevant(user_message, k=3)
-        context = "\n".join(log.get("text", "") for log in relevant_logs)
+        # Get ALL recent logs for context
+        logs = get_log_data()
+        print(f"Retrieved {len(logs)} logs for context")
+        
+        logs_sorted = sorted(
+            logs,
+            key=lambda x: x.get("metadata", {}).get("timestamp", x.get("log_id", "")),
+            reverse=True
+        )
+        
+        # Provide rich context from simulation logs
+        context_logs = logs_sorted[:15]  # Use up to 15 logs for better context
+        
+        # Format the context information in a clean way
+        simulation_context = []
+        for log in context_logs:
+            agent_id = log.get("metadata", {}).get("agent_id", "Unknown")
+            position = log.get("metadata", {}).get("position", "Unknown")
+            jammed = "JAMMED" if log.get("metadata", {}).get("jammed", False) else "CLEAR"
+            timestamp = log.get("metadata", {}).get("timestamp", "Unknown time")
+            
+            # Create a structured context entry
+            entry = f"Agent {agent_id} at position {position} is {jammed} at {timestamp}"
+            simulation_context.append(entry)
+        
+        # Join all context entries
+        context_text = "\n".join(simulation_context)
 
-        prompt = f"Context:\n{context}\n\nUser: {user_message}"
+        # Create a structured prompt
+        prompt = f"""
+You are an assistant for a Multi-Agent Simulation system. Users can ask you about the current state of the simulation.
+
+CURRENT SIMULATION STATE:
+{context_text}
+
+USER QUERY: {user_message}
+
+Respond to the user's query based on the simulation state information provided above.
+"""
+
+        # Call the LLM with the enhanced prompt
         response = ollama.chat(
             model=LLM_MODEL,
             messages=[{"role": "user", "content": prompt}]
@@ -74,26 +106,43 @@ def chat():
         return jsonify({'response': ollama_response})
 
     except Exception as e:
-        print(f"ERROR: {e}")
+        print(f"ERROR in chat route: {e}")
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
 
 @app.route("/logs")
 def get_logs():
     try:
-        logs = get_log_data()
-        logs_sorted = sorted(
-            logs,
-            key=lambda x: x.get("metadata", {}).get("timestamp", x.get("log_id", "")),
-            reverse=True
-        )
-
-        return jsonify({
-            "logs": logs_sorted[:20],
-            "has_more": len(logs_sorted) > 20
-        })
+        # Get all logs from the most recent chunk only
+        latest_chunk_index = get_latest_chunk_index()
+        chunk_path = get_chunk_path(latest_chunk_index)
+        
+        if chunk_path.exists():
+            with open(chunk_path, "rb") as f:
+                logs = pickle.load(f)
+                
+            # Sort by timestamp if available
+            logs_sorted = sorted(
+                logs,
+                key=lambda x: x.get("metadata", {}).get("timestamp", x.get("log_id", "")),
+                reverse=True
+            )
+            
+            print(f"Found {len(logs_sorted)} logs in latest chunk")
+            
+            # Return ALL logs from the chunk
+            return jsonify({
+                "logs": logs_sorted,
+                "has_more": False  # Since we're returning all logs from the current chunk
+            })
+        else:
+            print(f"No logs found at path: {chunk_path}")
+            return jsonify({"logs": [], "has_more": False})
     except Exception as e:
-        print("Error in /logs route:", e)
-        return jsonify({"error": "Internal server error"}), 500
+        print(f"Error in /logs route: {e}")
+        traceback.print_exc()
+        return jsonify({"error": f"Internal server error: {str(e)}"}), 500
 
 @app.route("/log_count")
 def log_count():
@@ -127,30 +176,27 @@ def stream_logs():
 
     return Response(generate(), content_type='text/event-stream')
 
-@app.route("/log_chunk/<int:chunk_num>")
-def get_log_chunk(chunk_num):
-    """
-    Get a specific chunk of logs by chunk number.
-    Each chunk will be 20 logs by default, but you can adjust this if needed.
-    """
+@app.route("/log_chunk/<int:chunk_index>")
+def get_log_chunk(chunk_index):
     try:
-        logs = get_log_data()
-        start_index = chunk_num * 20
-        end_index = start_index + 20
-        logs_sorted = sorted(
-            logs,
-            key=lambda x: x.get("metadata", {}).get("timestamp", x.get("log_id", "")),
-            reverse=True
-        )
-        chunk = logs_sorted[start_index:end_index]
+        chunk_path = get_chunk_path(chunk_index)
+        if not chunk_path.exists():
+            return jsonify({"logs": [], "has_more": False})
+
+        with open(chunk_path, "rb") as f:
+            logs = pickle.load(f)
+
+        logs_sorted = sorted(logs, key=lambda x: x.get("metadata", {}).get("timestamp", x.get("log_id", "")), reverse=True)
+        print(f"Chunk {chunk_index} contains {len(logs_sorted)} logs")
 
         return jsonify({
-            "logs": chunk,
-            "has_more": len(logs_sorted) > end_index
+            "logs": logs_sorted,
+            "has_more": (chunk_index > 0)  # If index > 0, older chunks may exist
         })
     except Exception as e:
-        print("Error in /log_chunk route:", e)
-        return jsonify({"error": "Internal server error"}), 500
+        print(f"Error in /log_chunk/{chunk_index}: {e}")
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == '__main__':
     print("Starting Flask app...")

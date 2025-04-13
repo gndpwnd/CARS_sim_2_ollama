@@ -20,3 +20,32 @@ I have the following chat app to interact with llm and corresponding RAG data, I
 
 
 i want to implement chunking for the logs, this way as more data is added to Rag, and it goes over a FILE_SIZE_LIMIT = # size of file limit in megabytes, a new file is created. from here, I want to be able to query logs and only the latest log file is queried, but also the number of log files is returned, this way i could have in my app a button to "see previous log" and view entries from those logs. don't use classes.
+
+
+
+
+I have the following files for interacting with an llm in a RAG demo. My 4-llm script is supposed to simply send data on agents to a rag store script that will store data in log files that don't exceed a certain size. Then i have a chatapp that is supposed to handle getting all logs from the latest log and displaying it on a RAG feed. the chatapp is also supposed to be able to interact with an LLM than is supposed to maintain the same context window with the agent simulator. currenly in the chatapp, i only see 5 logs relevant to what the simulator has put out, make sure the chat app is not just displaying relevant logs, but all logs from the most recent file. also, make sure that the chat app and the data simulator are communicating with the same llm on the ssytem so that the llm knows whats going on or at least are storing data in the same RAG for the llm - i see two RAG (pkl )files being created which is not supposed to happen - i only want to use the logs stored as chunks to have the most recent, digestable log being used and also display all the logs from that log - not only the first five from that log in my chat app.
+
+
+
+(venv) ubuntu@ubuntu2004:/opt/CARS_sim_2_ollama$ tree -I 'venv|__pycache__|.git'
+.
+├── 4-llm_return_to_safe_coords.py
+├── chatapp.py
+├── diagrams
+│   └── this_repo_qr.png
+├── faiss_index.bin
+├── get_logs.py
+├── log_data.pkl
+├── logs
+│   └── log_chunk_0.pkl
+├── notes.md
+├── rag_store.py
+├── requirements.txt
+├── static
+│   ├── css
+│   │   └── style.css
+│   └── js
+│       └── script.js
+└── templates
+    └── index.html

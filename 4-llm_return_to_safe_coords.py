@@ -4,17 +4,18 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
 from matplotlib.animation import FuncAnimation
-import ollama
 import re
-
 import datetime
-from rag_store import add_log  # Assuming the RAG store methods are properly imported
 
+# Import shared LLM configuration
+from llm_config import get_ollama_client, get_model_name
+ollama = get_ollama_client()
+LLM_MODEL = get_model_name()
 
+from rag_store import add_log  # Import additional needed functions
 
 # Toggle between LLM and algorithm-based control
 USE_LLM = True  # Set to True to use LLM, False to use algorithm
-LLM_MODEL = "llama3.2:1b"
 
 RAG_UPDATE_FREQUENCY = 5  # Log agent data every 5 iterations (same as buffer size)
 iteration_count = 0  # Track the number of iterations

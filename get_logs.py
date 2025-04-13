@@ -1,26 +1,40 @@
-# get_logs.py
+import pickle
+import time
+from pathlib import Path
 
-from rag_store import get_log_data
+LOG_DIR = "logs/"
+FILE_PREFIX = "log_chunk_"
+OUTPUT_FILE = "logs.txt"
 
-def print_all_logs():
-    try:
-        logs = get_log_data()
-        if logs:
-            print(f"Fetched {len(logs)} logs:")
-            for log in logs:
-                log_id = log.get("log_id", "Unknown ID")
-                log_text = log.get("text", "No text available")
-                timestamp = log.get("metadata", {}).get("timestamp", "No timestamp")
-                agent_id = log.get("metadata", {}).get("agent_id", "Unknown agent")
-                comm_quality = log.get("metadata", {}).get("comm_quality", "Unknown quality")
-                position = log.get("metadata", {}).get("position", "Unknown position")
-                
-                # Printing all details on a single line
-                print(f"{log_id} | {timestamp} | {agent_id} | {comm_quality} | {position} | {log_text}")
-        else:
-            print("No logs found.")
-    except Exception as e:
-        print(f"ERROR fetching logs: {e}")
+def get_chunk_path(index):
+    return Path(LOG_DIR) / f"{FILE_PREFIX}{index}.pkl"
 
-if __name__ == '__main__':
-    print_all_logs()
+def get_latest_chunk_index():
+    files = sorted(Path(LOG_DIR).glob(f"{FILE_PREFIX}*.pkl"))
+    if not files:
+        return -1
+    return max(int(f.stem.split("_")[-1]) for f in files)
+
+def read_latest_logs():
+    index = get_latest_chunk_index()
+    if index == -1:
+        return []
+    path = get_chunk_path(index)
+    if not path.exists():
+        return []
+    with open(path, "rb") as f:
+        return pickle.load(f)
+
+def write_logs_to_text(logs):
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        for i, log in enumerate(logs, 1):
+            f.write(f"--- Log Entry {i} ---\n")
+            f.write(f"Log ID: {log.get('log_id')}\n")
+            f.write(f"Text: {log.get('text')}\n")
+            f.write(f"Metadata: {log.get('metadata')}\n\n")
+
+if __name__ == "__main__":
+    while True:
+        logs = read_latest_logs()
+        write_logs_to_text(logs)
+        time.sleep(3)
