@@ -128,7 +128,6 @@ def get_metadata(query, k=3):
             """, (query_vec, k))
             return [row[0] for row in cur.fetchall()]
 
-
 # ─── FILTER BY METADATA ────────────────────────────────
 def filter_logs_by_jammed(jammed=True):
     with psycopg2.connect(**DB_CONFIG) as conn:

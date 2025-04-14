@@ -126,7 +126,8 @@ def log_batch_of_data(agent_histories: dict, prefix="batch"):
                 'comm_quality': comm_quality,
                 'position': position,
                 'jammed': jammed,
-                'role': 'system'
+                'role': 'system',
+                'source': 'simulation'
             }
 
             # Correct order of parameters: log_text, metadata, agent_id=None, log_id=None

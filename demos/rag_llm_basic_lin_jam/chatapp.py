@@ -14,7 +14,7 @@ from llm_config import get_ollama_client, get_model_name
 ollama = get_ollama_client()
 LLM_MODEL = get_model_name()
 
-NUM_LOGS_CONTEXT = 10
+NUM_LOGS_CONTEXT = 20
 
 DB_CONFIG = {
     "dbname": "rag_db",
@@ -50,7 +50,6 @@ def fetch_logs_from_db(limit=None):
     except Exception as e:
         print(f"Error fetching logs from DB: {e}")
         return []
-
 
 app = Flask(__name__)
 
@@ -130,14 +129,17 @@ Respond to the user's query based on the simulation state information provided a
         add_log(user_message, {
             "role": "user",
             "timestamp": timestamp,
-            "agent_id": "user"
+            "agent_id": "user",
+            "source": "chat"
         })
 
         add_log(ollama_response, {
             "role": "assistant",
             "timestamp": timestamp,
-            "agent_id": "ollama"
+            "agent_id": "ollama",
+            "source": "chat"
         })
+
 
         return jsonify({'response': ollama_response})
 

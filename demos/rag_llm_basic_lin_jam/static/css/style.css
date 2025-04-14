@@ -98,14 +98,25 @@ body {
     animation: fadeIn 0.3s ease-in-out;
 }
 
-.message.user {
-    background: #d1e7dd;
+.user-message {
+    background: #d0ebff; /* light blue */
+    color: #000;
     align-self: flex-end;
+    border-radius: 10px 10px 0 10px;
+    padding: 10px;
 }
 
-.message.ollama {
-    background: #f8d7da;
+.bot-message {
+    background: #ffe8cc; /* light orange */
+    color: #000;
     align-self: flex-start;
+    border-radius: 10px 10px 10px 0;
+    padding: 10px;
+}
+
+.thinking {
+    font-style: italic;
+    opacity: 0.6;
 }
 
 /* Loading Indicator */

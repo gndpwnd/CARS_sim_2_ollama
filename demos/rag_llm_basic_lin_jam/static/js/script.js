@@ -57,9 +57,10 @@ function addLog(log) {
         </div>
     `;
 
-    logContainer.appendChild(logDiv);
-    logContainer.scrollTop = logContainer.scrollHeight;
+    logContainer.prepend(logDiv);
+    logContainer.scrollTop = 0; // Always scroll to top
 }
+
 
 // Log Fetcher
 async function loadLogs() {
@@ -76,7 +77,7 @@ async function loadLogs() {
         if (logs.length) {
             logContainer.innerHTML = '';
             seenLogIds.clear();
-            logs.forEach(addLog);
+            logs.reverse().forEach(addLog);  // Reverse here
         }
 
         loadingDiv.textContent = has_more ? "Load more..." : "No more logs.";

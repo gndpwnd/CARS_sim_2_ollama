@@ -3,7 +3,7 @@
 
 > using python 3.11
 
-### Setup For Demos
+## Setup For Demos
 
 clone the repo
 
@@ -28,22 +28,10 @@ in a separate terminal, start the ollama server
 ```
 ollama run llama3.2:1b 
 ```
+
 ## Running the Demos
 
-### Linear Waypoints Mission Simulation
-
-files in ***basic_lin_demos*** can stand on their own
-```
-python3 demos/basic_lin/1-jam_return_safe_coords.py
-```
-
-### Basic RAG Demo
-
-need the chatapp interface with ollama/LLM and data generator running at same time
-```
-python3 demos/basic_rag_demo/chatapp.py
-python3 demos/basic_rag_demo/demo_rag_data.py
-```
+Read the Readme.md files in the demo folders for more information on how to run the demos.
 
 ## Handling other things in the project 
 
