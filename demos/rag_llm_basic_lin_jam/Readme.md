@@ -27,6 +27,12 @@ start the chatapp to query llm and use rag data
 python3 chatapp.py
 ```
 
+visit the chat app
+
+```
+http://localhost:5000
+```
+
 ### Stop the simulation
 
 stop the database and remove all containers and networks created by the docker compose file
