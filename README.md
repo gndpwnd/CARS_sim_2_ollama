@@ -89,6 +89,51 @@ ln -s /mnt/hgfs/<folder_name> <link_name>
 ln -s /mnt/hgfs/shared-folder host-share
 ```
 
+### Handling Docker Compose
+
+Install the newer docker compose on your system, i am using ubuntu
+
+> [source](https://docs.docker.com/compose/install/linux/)
+
+in one line
+```
+
+```
+DOCKER_CONFIG=${DOCKER_CONFIG:-$HOME/.docker}; mkdir -p $DOCKER_CONFIG/cli-plugins; curl -SL https://github.com/docker/compose/releases/download/v2.35.0/docker-compose-linux-x86_64 -o $DOCKER_CONFIG/cli-plugins/docker-compose; chmod +x $DOCKER_CONFIG/cli-plugins/docker-compose; docker compose version
+```
+```
+
+the commands being run
+```
+DOCKER_CONFIG=${DOCKER_CONFIG:-$HOME/.docker}
+mkdir -p $DOCKER_CONFIG/cli-plugins
+curl -SL https://github.com/docker/compose/releases/download/v2.35.0/docker-compose-linux-x86_64 -o $DOCKER_CONFIG/cli-plugins/docker-compose
+chmod +x $DOCKER_CONFIG/cli-plugins/docker-compose
+docker compose version
+```
+
+Running docker compose
+
+```
+docker compose up
+```
+
+running in detatched mode
+```
+docker compose up -d
+```
+
+stopping docker compose
+```
+docker compose down
+```
+
+to remove all unused docker containers linked to the postresql pgvector image
+```
+docker ps -a --filter "ancestor=ankane/pgvector:latest" -q
+docker rm $(docker ps -a --filter "ancestor=ankane/pgvector:latest" -q)
+```
+
 # TODO
 
 ## Basic Simulation

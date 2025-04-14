@@ -1,149 +1,187 @@
-import faiss
-import os
-import pickle
+# rag_pgvector_store.py
+import psycopg2
+from psycopg2.extras import Json
 from sentence_transformers import SentenceTransformer
-from pathlib import Path
-import uuid
+import time
 
-# Constants and setup
+# ─── CONFIG ────────────────────────────────────────────
+DB_CONFIG = {
+    "dbname": "rag_db",
+    "user": "postgres",
+    "password": "password",
+    "host": "localhost",
+    "port": "5432"
+}
+
+VECTOR_DIM = 384  # depends on your model (MiniLM = 384)
 model = SentenceTransformer("all-MiniLM-L6-v2")
-LOG_DIR = "logs/"
-FILE_SIZE_LIMIT_MB = 5  # in MB
-FILE_PREFIX = "log_chunk_"
-index_file = "faiss_index.bin"
-FILE_SIZE_LIMIT = FILE_SIZE_LIMIT_MB * 1024 * 1024  # size limit in bytes
 
 
-if os.path.exists(index_file):
-    index = faiss.read_index(index_file)
-else:
-    index = None  # Will be initialized when first vector is added
-
-# ────── Chunk Management ──────
-
-def get_chunk_path(index):
-    return Path(LOG_DIR) / f"{FILE_PREFIX}{index}.pkl"
-
-def get_latest_chunk_index():
-    files = sorted(Path(LOG_DIR).glob(f"{FILE_PREFIX}*.pkl"))
-    if not files:
-        return 0
-    return max(int(f.stem.split("_")[-1]) for f in files)
-
-def current_chunk_path():
-    return get_chunk_path(get_latest_chunk_index())
-
-def is_current_chunk_full():
-    path = current_chunk_path()
-    return path.exists() and path.stat().st_size >= FILE_SIZE_LIMIT
-
-def append_log_to_chunk(log_entry):
-    Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
-    new_index = get_latest_chunk_index()
-    if is_current_chunk_full():
-        new_index += 1
-
-    path = get_chunk_path(new_index)
-    logs = []
-    if path.exists():
-        with open(path, "rb") as f:
-            logs = pickle.load(f)
-
-    logs.append(log_entry)
-    with open(path, "wb") as f:
-        pickle.dump(logs, f)
-
-def get_log_data():
-    """Load logs from chunk files only"""
-    all_log_data = []
-    Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
-    chunk_files = sorted(Path(LOG_DIR).glob(f"{FILE_PREFIX}*.pkl"))
-    for chunk_path in chunk_files:
+# ─── DATABASE INIT ─────────────────────────────────────
+def init_db(retries=5, delay=3):
+    for attempt in range(retries):
         try:
-            with open(chunk_path, "rb") as f:
-                all_log_data.extend(pickle.load(f))
+            with psycopg2.connect(**DB_CONFIG) as conn:
+                with conn.cursor() as cur:
+                    # Ensure pgvector and pgcrypto extensions are enabled
+                    cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+                    cur.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto;")
+                    conn.commit()
+
+                    # Create logs table with auto-generated UUID and timestamp
+                    cur.execute(f"""
+                        CREATE TABLE IF NOT EXISTS logs (
+                            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                            text TEXT NOT NULL,
+                            metadata JSONB,
+                            embedding vector({VECTOR_DIM}),
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        );
+                    """)
+
+                    # Create index on agent_id for faster queries
+                    cur.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_logs_agent_id ON logs ((metadata->>'agent_id'));
+                    """)
+
+                    # Create index on timestamp for time-based queries
+                    cur.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs ((metadata->>'timestamp'));
+                    """)
+                    
+                    conn.commit()
+            print("✅ Database initialized successfully.")
+            return
+        except psycopg2.OperationalError:
+            print(f"🔁 Waiting for PostgreSQL... ({attempt + 1}/{retries})")
+            time.sleep(delay)
         except Exception as e:
-            print(f"Failed to load chunk {chunk_path}: {e}")
-    return all_log_data
+            print("❌ Failed to initialize database:", e)
+            raise
 
-# ────── Main Operations ──────
+    raise RuntimeError("PostgreSQL not available after multiple attempts.")
 
-def add_log(log_id: str = None, log_text: str = "", metadata: dict = None, agent_id=None):
-    global index  # <- to avoid the 'local variable referenced before assignment' error
-
+# ─── ADD LOG ───────────────────────────────────────────
+def add_log(log_text, metadata=None, agent_id=None, log_id=None):
+    """
+    Add a log entry to the database.
+    The database will generate a UUID if none is provided.
+    """
     if metadata is None:
         metadata = {}
-
-    if agent_id is not None:
+    if agent_id:
         metadata['agent_id'] = agent_id
 
-    log_id = log_id or str(uuid.uuid4())  # Always assign unique ID
-    metadata['log_id'] = log_id
+    # We'll ignore log_id parameter as the database will generate UUID
+    embedding = model.encode([log_text])[0].tolist()
 
-    try:
-        vec = model.encode([log_text])
-
-        if index is None:
-            index = faiss.IndexFlatL2(vec.shape[1])
-
-        if not index.is_trained:
-            index = faiss.IndexFlatL2(vec.shape[1])  # Safe fallback
-
-        index.add(vec)
-
-        log_entry = {
-            "log_id": log_id,
-            "text": log_text,
-            "metadata": metadata
-        }
-
-        append_log_to_chunk(log_entry)
-        faiss.write_index(index, index_file)
-
-    except Exception as e:
-        print(f"Error adding log: {e}")
+    with psycopg2.connect(**DB_CONFIG) as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO logs (text, metadata, embedding)
+                VALUES (%s, %s, %s)
+                RETURNING id;
+            """, (log_text, Json(metadata), embedding))
+            inserted_id = cur.fetchone()[0]
+        conn.commit()
+    
+    return inserted_id
 
 
-def retrieve_relevant(query: str, k: int = 3):
-    all_logs = get_log_data()
-    if not all_logs:
-        return []
+# ─── RETRIEVE SIMILAR LOGS ─────────────────────────────
+def retrieve_relevant(query, k=3):
+    query_vec = model.encode([query])[0].tolist()
 
-    query_vec = model.encode([query])
-    D, I = index.search(query_vec, k)
+    with psycopg2.connect(**DB_CONFIG) as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"""
+                SELECT id, text, metadata, created_at
+                FROM logs
+                ORDER BY embedding <-> %s
+                LIMIT %s;
+            """, (query_vec, k))
+            results = cur.fetchall()
 
     return [
         {
-            "text": all_logs[i]["text"],
-            "metadata": all_logs[i]["metadata"],
-            "comm_quality": all_logs[i]["metadata"].get("comm_quality"),
-            "position": all_logs[i]["metadata"].get("position")
+            "id": row[0],
+            "text": row[1],
+            "metadata": row[2],
+            "created_at": row[3],
+            "comm_quality": row[2].get("comm_quality"),
+            "position": row[2].get("position")
         }
-        for i in I[0] if i < len(all_logs)
+        for row in results
     ]
 
-def get_metadata(query: str, k: int = 3):
-    all_logs = get_log_data()
-    if not all_logs:
-        return []
+# ─── GET METADATA ──────────────────────────────────────
+def get_metadata(query, k=3):
+    query_vec = model.encode([query])[0].tolist()
 
-    query_vec = model.encode([query])
-    D, I = index.search(query_vec, k)
-    return [all_logs[i]["metadata"] for i in I[0] if i < len(all_logs)]
+    with psycopg2.connect(**DB_CONFIG) as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"""
+                SELECT metadata
+                FROM logs
+                ORDER BY embedding <-> %s
+                LIMIT %s;
+            """, (query_vec, k))
+            return [row[0] for row in cur.fetchall()]
 
+
+# ─── FILTER BY METADATA ────────────────────────────────
 def filter_logs_by_jammed(jammed=True):
-    return [
-        {"text": log["text"], "metadata": log["metadata"]}
-        for log in get_log_data()
-        if log["metadata"].get("jammed") == jammed
-    ]
+    with psycopg2.connect(**DB_CONFIG) as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT id, text, metadata, created_at FROM logs
+                WHERE metadata->>'jammed' = %s;
+            """, (str(jammed).lower(),))
+            return [{"id": row[0], "text": row[1], "metadata": row[2], "created_at": row[3]} for row in cur.fetchall()]
 
+# ─── GET LOGS BY AGENT_ID ──────────────────────────────
+def get_logs_by_agent(agent_id):
+    with psycopg2.connect(**DB_CONFIG) as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT id, text, metadata, created_at FROM logs
+                WHERE metadata->>'agent_id' = %s
+                ORDER BY created_at DESC;
+            """, (agent_id,))
+            return [{"id": row[0], "text": row[1], "metadata": row[2], "created_at": row[3]} for row in cur.fetchall()]
+
+# ─── GET LOGS BY TIME PERIOD ───────────────────────────
+def get_logs_by_time_period(start_time, end_time, agent_id=None):
+    """
+    Get logs between start_time and end_time, optionally filtered by agent_id.
+    Time format should be ISO: '2023-06-01T00:00:00Z'
+    """
+    with psycopg2.connect(**DB_CONFIG) as conn:
+        with conn.cursor() as cur:
+            if agent_id:
+                cur.execute("""
+                    SELECT id, text, metadata, created_at FROM logs
+                    WHERE metadata->>'timestamp' >= %s 
+                    AND metadata->>'timestamp' <= %s
+                    AND metadata->>'agent_id' = %s
+                    ORDER BY metadata->>'timestamp' DESC;
+                """, (start_time, end_time, agent_id))
+            else:
+                cur.execute("""
+                    SELECT id, text, metadata, created_at FROM logs
+                    WHERE metadata->>'timestamp' >= %s 
+                    AND metadata->>'timestamp' <= %s
+                    ORDER BY metadata->>'timestamp' DESC;
+                """, (start_time, end_time))
+            
+            return [{"id": row[0], "text": row[1], "metadata": row[2], "created_at": row[3]} for row in cur.fetchall()]
+
+# ─── CLEAR DB ──────────────────────────────────────────
 def clear_store():
-    """Clear the FAISS index and all stored logs."""
-    global index
-    index = faiss.IndexFlatL2(384)
-    faiss.write_index(index, index_file)
+    with psycopg2.connect(**DB_CONFIG) as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM logs;")
+        conn.commit()
 
-    # Optionally clear the log chunks (disabled by default)
-    # import shutil
-    # shutil.rmtree(LOG_DIR, ignore_errors=True)
+# ─── INIT ON IMPORT ────────────────────────────────────
+init_db()

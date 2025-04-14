@@ -8,3 +8,4 @@
 host-share
 **logs/
 **logs.txt
+**pgdata/

@@ -1,29 +1,56 @@
 # This is a simple Flask app that serves as a chat interface for an LLM (Large Language Model) and displaying logs.
-from flask import Flask, render_template, request, jsonify, Response
+from flask import Flask, render_template, request, jsonify
 import sys
 import traceback
 import hashlib
 from datetime import datetime
-import time
-import pickle
+import psycopg2
+import json
+from datetime import datetime
+from rag_store import add_log
+
 
 from llm_config import get_ollama_client, get_model_name
 ollama = get_ollama_client()
 LLM_MODEL = get_model_name()
 
-try:
-    from rag_store import get_log_data, add_log, retrieve_relevant, get_chunk_path, get_latest_chunk_index
-    print("Successfully imported rag_store functions")
-except Exception as e:
-    print(f"ERROR importing from rag_store: {e}")
-    traceback.print_exc()
+NUM_LOGS_CONTEXT = 10
 
-try:
-    import numpy as np
-    print("Successfully imported numpy")
-except Exception as e:
-    print(f"ERROR importing numpy: {e}")
-    traceback.print_exc()
+DB_CONFIG = {
+    "dbname": "rag_db",
+    "user": "postgres",
+    "password": "password",
+    "host": "localhost",
+    "port": "5432"
+}
+
+def fetch_logs_from_db(limit=None):
+    try:
+        with psycopg2.connect(**DB_CONFIG) as conn:
+            with conn.cursor() as cur:
+                query = "SELECT id, text, metadata, created_at FROM logs"
+                if limit:
+                    query += f" ORDER BY created_at DESC LIMIT {limit}"
+                else:
+                    query += " ORDER BY created_at DESC"
+                cur.execute(query)
+                rows = cur.fetchall()
+                
+                logs = []
+                for row in rows:
+                    log_id, content, metadata_json, created_at = row
+                    metadata = json.loads(metadata_json) if isinstance(metadata_json, str) else metadata_json
+                    logs.append({
+                        "log_id": str(log_id),
+                        "text": content,
+                        "metadata": metadata,
+                        "created_at": created_at.isoformat()
+                    })
+                return logs
+    except Exception as e:
+        print(f"Error fetching logs from DB: {e}")
+        return []
+
 
 app = Flask(__name__)
 
@@ -48,7 +75,7 @@ def chat():
             return jsonify({'error': 'No message provided'}), 400
 
         # Get ALL recent logs for context
-        logs = get_log_data()
+        logs = fetch_logs_from_db(limit=NUM_LOGS_CONTEXT)
         print(f"Retrieved {len(logs)} logs for context")
         
         logs_sorted = sorted(
@@ -114,35 +141,15 @@ Respond to the user's query based on the simulation state information provided a
 @app.route("/logs")
 def get_logs():
     try:
-        # Get all logs from the most recent chunk only
-        latest_chunk_index = get_latest_chunk_index()
-        chunk_path = get_chunk_path(latest_chunk_index)
-        
-        if chunk_path.exists():
-            with open(chunk_path, "rb") as f:
-                logs = pickle.load(f)
-                
-            # Sort by timestamp if available
-            logs_sorted = sorted(
-                logs,
-                key=lambda x: x.get("metadata", {}).get("timestamp", x.get("log_id", "")),
-                reverse=True
-            )
-            
-            print(f"Found {len(logs_sorted)} logs in latest chunk")
-            
-            # Return ALL logs from the chunk
-            return jsonify({
-                "logs": logs_sorted,
-                "has_more": False  # Since we're returning all logs from the current chunk
-            })
-        else:
-            print(f"No logs found at path: {chunk_path}")
-            return jsonify({"logs": [], "has_more": False})
+        logs = fetch_logs_from_db(limit=100)
+        return jsonify({
+            "logs": logs,
+            "has_more": False  # You could paginate in future
+        })
     except Exception as e:
         print(f"Error in /logs route: {e}")
-        traceback.print_exc()
         return jsonify({"error": f"Internal server error: {str(e)}"}), 500
+
 
 @app.route("/log_count")
 def log_count():
@@ -150,52 +157,12 @@ def log_count():
     Return the current number of logs in the system.
     """
     try:
-        logs = get_log_data()
+        logs = fetch_logs_from_db()
         return jsonify({"log_count": len(logs)})
     except Exception as e:
         print("Error in /log_count route:", e)
         return jsonify({"error": "Internal server error"}), 500
 
-@app.route("/stream_logs")
-def stream_logs():
-    """
-    Stream live logs as they are added to the system.
-    """
-    def generate():
-        while True:
-            logs = get_log_data()
-            logs_sorted = sorted(
-                logs,
-                key=lambda x: x.get("metadata", {}).get("timestamp", x.get("log_id", "")),
-                reverse=True
-            )
-            latest_log = logs_sorted[0] if logs_sorted else None
-            if latest_log:
-                yield f"data: {latest_log}\n\n"
-            time.sleep(1)  # Adjust the delay between streams if needed
-
-    return Response(generate(), content_type='text/event-stream')
-
-@app.route("/log_chunk/<int:chunk_index>")
-def get_log_chunk(chunk_index):
-    try:
-        chunk_path = get_chunk_path(chunk_index)
-        if not chunk_path.exists():
-            return jsonify({"logs": [], "has_more": False})
-
-        with open(chunk_path, "rb") as f:
-            logs = pickle.load(f)
-
-        logs_sorted = sorted(logs, key=lambda x: x.get("metadata", {}).get("timestamp", x.get("log_id", "")), reverse=True)
-        print(f"Chunk {chunk_index} contains {len(logs_sorted)} logs")
-
-        return jsonify({
-            "logs": logs_sorted,
-            "has_more": (chunk_index > 0)  # If index > 0, older chunks may exist
-        })
-    except Exception as e:
-        print(f"Error in /log_chunk/{chunk_index}: {e}")
-        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == '__main__':
