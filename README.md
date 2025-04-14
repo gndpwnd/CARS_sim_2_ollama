@@ -39,7 +39,7 @@ Read the Readme.md files in the demo folders for more information on how to run 
 
 the rag demo will download files to your system and create files for storage. All of these files should be accounted for in the [.gitignore](https://github.com/gndpwnd/CARS_sim_2_ollama/blob/main/.gitignore), to view your file tree, but exclude directories that have lots of "noisy files"
 ```
-tree -I 'venv|__pycache__|.git'
+tree -I 'venv|__pycache__|.git|pgdata'
 ```
 
 these files can get large, so if you want to remove them, you can run the following command to see what would be removed. In case you don't want to remove the venv, you can exclude it.

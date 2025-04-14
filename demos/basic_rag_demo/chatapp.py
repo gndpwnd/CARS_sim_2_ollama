@@ -5,7 +5,7 @@ import datetime
 import hashlib
 
 try:
-    from demos.rag_llm_basic_lin_jam.rag_store import add_log, retrieve_relevant
+    from rag_store import add_log, retrieve_relevant
     print("Successfully imported rag_store")
 except Exception as e:
     print(f"ERROR importing rag_store: {e}")
@@ -25,6 +25,8 @@ try:
 except Exception as e:
     print(f"ERROR importing numpy: {e}")
     traceback.print_exc()
+
+LLM_MODEL = "llama3.2:1b"  # Default model
 
 app = Flask(__name__)
 
@@ -76,7 +78,7 @@ def chat():
                 print("Sending request to Ollama...")
                 prompt = f"Context:\n{context}\n\nUser: {user_message}"
                 response = ollama.chat(
-                    model="tinyllama:1.1b",
+                    model=LLM_MODEL,
                     messages=[{"role": "user", "content": prompt}]
                 )
                 ollama_response = response.get('message', {}).get('content', "Sorry, I didn't understand that.")
@@ -90,25 +92,22 @@ def chat():
                 try:
                     print("Adding log entries to RAG...")
                     # Add the user message to FAISS
-                    message_hash = hashlib.md5(user_message.encode()).hexdigest()[:8]
+
+                    timestamp = datetime.datetime.now().isoformat()
+                    log_id_user = hashlib.sha256((user_message + timestamp).encode()).hexdigest()
                     add_log(
-                        log_id=f"user-{message_hash}",
-                        log_text=user_message,
-                        metadata={
-                            "role": "user",
-                            "timestamp": current_timestamp
-                        }
+                        log_id=log_id_user,
+                        log_text=f"[User]: {user_message}",
+                        metadata={"role": "user", "timestamp": timestamp}
                     )
-                    
-                    # Add the ollama response to FAISS
-                    response_hash = hashlib.md5(ollama_response.encode()).hexdigest()[:8]
+
+                    response_text = response['message']['content']
+                    log_id_assistant = hashlib.sha256((response_text + timestamp).encode()).hexdigest()
+
                     add_log(
-                        log_id=f"ollama-{response_hash}",
-                        log_text=ollama_response,
-                        metadata={
-                            "role": "ollama",
-                            "timestamp": current_timestamp
-                        }
+                        log_id=log_id_assistant,
+                        log_text=f"[Assistant]: {response_text}",
+                        metadata={"role": "assistant", "timestamp": timestamp}
                     )
                     print("Successfully added logs to RAG")
                 except Exception as e:

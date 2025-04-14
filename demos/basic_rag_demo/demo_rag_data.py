@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-import time
+import hashlib
 import os
 import datetime
 from rag_store import add_log, retrieve_relevant
@@ -96,31 +96,43 @@ def update(num, x_values, y_values, red_dot):
 
     # Format position as "x,y" string
     position_str = f"{x_position:.3f},{y_position:.3f}"
-    
+
     # Get current timestamp
     timestamp = datetime.datetime.now().isoformat()
-    
-    # Create log text with all required information
-    log_text = (f"Position: {position_str}. "
-               f"Daytime: {percentage_daytime:.2f}%, Nighttime: {percentage_nighttime:.2f}%. "
-               f"Time of Day: {time_of_day}. Timestamp: {timestamp}")
-    
-    # Create metadata dictionary with specific fields
+
+    # Create structured log text
+    log_text = (
+        f"[System - SineWaveController] "
+        f"Position: {position_str} | "
+        f"Daytime: {percentage_daytime:.2f}% | "
+        f"Nighttime: {percentage_nighttime:.2f}% | "
+        f"Time of Day: {time_of_day} | "
+        f"Timestamp: {timestamp}"
+    )
+
+    # Create metadata dictionary
     metadata = {
+        "role": "system",
+        "agent": "sine_wave_controller",
         "position": position_str,
-        "daytime": f"daytime, {percentage_daytime:.2f}%",
-        "nighttime": f"nighttime, {percentage_nighttime:.2f}%",
-        "timestamp": timestamp,
-        "time_of_day": time_of_day
+        "daytime": percentage_daytime,
+        "nighttime": percentage_nighttime,
+        "time_of_day": time_of_day,
+        "timestamp": timestamp
     }
-    
+
+
+    # Create unique log ID using a hash of the log content + timestamp
+    log_id_source = log_text
+    log_id = hashlib.sha256(log_id_source.encode()).hexdigest()
+
     # Add data to RAG store
-    log_counter += 1
     add_log(
-        log_id=f"sine-data-{log_counter}",
+        log_id=log_id,
         log_text=log_text,
         metadata=metadata
     )
+
 
     # Print the time, position, and percentages for debugging
     print(f"Time: {current_time:.2f} s | X: {x_position:.2f} | Y: {y_position:.2f} | "
