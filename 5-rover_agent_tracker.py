@@ -16,6 +16,10 @@ from rover_helper_functions import (
     ROVER_START_POINT, ROVER_END_POINT, ROVER_SPEED, AGENT_DIST_TO_ROVER
 )
 
+from sim_helper_functions import (
+    convert_numpy_coords, round_coord, is_jammed
+)
+
 # Add rover-specific variables in the global variables section
 rover_pos_dict = {}  # Track rover positions and communication quality
 rover_path = []  # Store the rover's path
@@ -73,27 +77,6 @@ returned_to_safe = {}
 animation_running = True
 animation_object = None
 
-def convert_numpy_coords(obj):
-    """
-    Recursively convert numpy data types to native Python types for JSON serialization.
-    """
-    if isinstance(obj, (np.integer,)):
-        return int(obj)
-    elif isinstance(obj, (np.floating,)):
-        return float(obj)
-    elif isinstance(obj, (np.complexfloating,)):
-        return complex(obj)
-    elif isinstance(obj, (np.bool_, bool)):
-        return bool(obj)
-    elif isinstance(obj, np.ndarray):
-        return obj.tolist()
-    elif isinstance(obj, (list, tuple)):
-        converted = [convert_numpy_coords(item) for item in obj]
-        return tuple(converted) if isinstance(obj, tuple) else converted
-    elif isinstance(obj, dict):
-        return {key: convert_numpy_coords(value) for key, value in obj.items()}
-    return obj  # Unchanged types
-
 def log_batch_of_data(agent_histories: dict, prefix="batch"):
     """
     Log a batch of data from all agents. One log per agent per data point.
@@ -137,56 +120,6 @@ def log_batch_of_data(agent_histories: dict, prefix="batch"):
             # Correct order of parameters: log_text, metadata, agent_id=None, log_id=None
             add_log(log_text=log_text, metadata=metadata, log_id=log_id)
 
-def round_coord(value):
-    """Round coordinates to 3 decimal places"""
-    return round(value, 3)
-
-def round_coord(value):
-    """Round coordinates to 3 decimal places"""
-    return round(value, 3)
-
-def is_jammed(pos):
-    """Check if a position is inside the jamming zone"""
-    if isinstance(pos, tuple) or isinstance(pos, list):
-        pos_x, pos_y = pos[0], pos[1]
-    else:  # Assume numpy array
-        pos_x, pos_y = pos[0], pos[1]
-    
-    distance = math.sqrt((pos_x - jamming_center[0])**2 + (pos_y - jamming_center[1])**2)
-    return distance <= jamming_radius
-
-def linear_path(start, end):
-    """Create a linear path between start and end points with max step distance constraint"""
-    step_size = max_movement_per_step
-    path = []
-    
-    # Convert to numpy arrays if they aren't already
-    if isinstance(start, tuple) or isinstance(start, list):
-        start_np = np.array([start[0], start[1]])
-    else:
-        start_np = start
-        
-    if isinstance(end, tuple) or isinstance(end, list):
-        end_np = np.array([end[0], end[1]])
-    else:
-        end_np = end
-    
-    direction_x, direction_y = end_np[0] - start_np[0], end_np[1] - start_np[1]
-    distance = math.sqrt(direction_x**2 + direction_y**2)
-    
-    if distance > 0:
-        unit_x, unit_y = direction_x / distance, direction_y / distance
-    else:
-        return [(round_coord(end_np[0]), round_coord(end_np[1]))]
-    
-    current_x, current_y = start_np[0], start_np[1]
-    while math.sqrt((current_x - end_np[0])**2 + (current_y - end_np[1])**2) > step_size:
-        current_x += step_size * unit_x
-        current_y += step_size * unit_y
-        path.append((round_coord(current_x), round_coord(current_y)))
-    
-    path.append((round_coord(end_np[0]), round_coord(end_np[1])))
-    return path
 
 def limit_movement(current_pos, target_pos, agent_id=None):
     """Limit movement to max_movement_per_step and check distance to other agents only when near rover"""
@@ -235,7 +168,7 @@ def algorithm_make_move(agent_id):
         suggestion[1] = max(min(suggestion[1], y_range[1]), y_range[0])
         
         # Check if this would be outside the jamming zone
-        if not is_jammed(suggestion):
+        if not is_jammed(suggestion, jamming_center, jamming_radius):
             print(f"[Algorithm] Found non-jammed position for Agent {agent_id}: {suggestion}")
             return (round_coord(suggestion[0]), round_coord(suggestion[1]))
     
@@ -354,7 +287,7 @@ def get_last_safe_position(agent_id):
     """
     if agent_id in last_safe_position:
         safe_pos = last_safe_position[agent_id]
-        print(f"Agent {agent_id}: Returning to stored safe position {safe_pos}")
+        #print(f"Agent {agent_id}: is in last safe position {safe_pos}")
         return safe_pos
 
     # If no stored safe position, find one from history
@@ -435,7 +368,7 @@ def update_rover_position():
     last_position = rover_pos_dict["rover"][-1][:2]
     
     # Check if rover is jammed
-    is_rover_jammed = is_jammed(last_position)
+    is_rover_jammed = is_jammed(last_position, jamming_center, jamming_radius)
     
     # If rover just entered jamming zone
     if is_rover_jammed and not rover_jammed:
@@ -481,7 +414,7 @@ def update_rover_position():
                 position_history["rover"].append(next_pos)
                 
                 # Check if still jammed at new position
-                if is_jammed(next_pos):
+                if is_jammed(next_pos, jamming_center, jamming_radius):
                     print(f"Rover still jammed at new position {next_pos}")
                 else:
                     print(f"Rover has moved out of jamming zone to {next_pos}")
@@ -506,7 +439,7 @@ def update_rover_position():
             position_history["rover"].append(next_pos)
             
             # Check if new position is jammed
-            if is_jammed(next_pos):
+            if is_jammed(next_pos, jamming_center, jamming_radius):
                 print(f"Rover has entered jamming zone at {next_pos}")
                 rover_jammed = True
                 rover_pos_dict["rover"][-1][2] = low_comm_qual  # Lower comm quality
@@ -566,12 +499,12 @@ def update_agent_position(agent_id):
             next_pos = last_position
     
         # Update position with new communication quality
-        new_comm_quality = high_comm_qual if not is_jammed(next_pos) else low_comm_qual
+        new_comm_quality = high_comm_qual if not is_jammed(next_pos, jamming_center, jamming_radius) else low_comm_qual
         swarm_pos_dict[agent_id].append([next_pos[0], next_pos[1], new_comm_quality])
         position_history[agent_id].append(next_pos)
         
         # Check if still jammed at new position
-        if not is_jammed(next_pos):
+        if not is_jammed(next_pos, jamming_center, jamming_radius):
             print(f"{agent_id} has moved out of jamming zone to {next_pos}")
             jammed_positions[agent_id] = False
             swarm_pos_dict[agent_id][-1][2] = high_comm_qual  # Restore comm quality
@@ -622,20 +555,20 @@ def update_agent_position(agent_id):
                     distance_to_potential = math.sqrt((potential_pos[0] - last_position[0])**2 + 
                                                     (potential_pos[1] - last_position[1])**2)
                     
-                    if not is_jammed(potential_pos) and distance_to_potential <= max_movement_per_step:
+                    if not is_jammed(potential_pos, jamming_center, jamming_radius) and distance_to_potential <= max_movement_per_step:
                         next_pos = potential_pos
         
         # Save current position as safe if not jammed
-        if not is_jammed(last_position):
+        if not is_jammed(last_position, jamming_center, jamming_radius):
             last_safe_position[agent_id] = last_position
         
         # Update position with new communication quality
-        new_comm_quality = high_comm_qual if not is_jammed(next_pos) else low_comm_qual
+        new_comm_quality = high_comm_qual if not is_jammed(next_pos, jamming_center, jamming_radius) else low_comm_qual
         swarm_pos_dict[agent_id].append([next_pos[0], next_pos[1], new_comm_quality])
         position_history[agent_id].append(next_pos)
         
         # Check if new position is jammed
-        if is_jammed(next_pos) and not jammed_positions[agent_id]:
+        if is_jammed(next_pos, jamming_center, jamming_radius) and not jammed_positions[agent_id]:
             print(f"{agent_id} has entered jamming zone at {next_pos}")
             jammed_positions[agent_id] = True
             swarm_pos_dict[agent_id][-1][2] = low_comm_qual
@@ -996,7 +929,6 @@ def run_simulation_with_plots():
     plt.subplots_adjust(bottom=0.15)
     
     plt.show()
-
 
 if __name__ == "__main__":
     print(f"Running simulation with {'LLM' if USE_LLM else 'Algorithm'} control")
