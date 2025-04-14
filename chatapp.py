@@ -14,7 +14,7 @@ from llm_config import get_ollama_client, get_model_name
 ollama = get_ollama_client()
 LLM_MODEL = get_model_name()
 
-NUM_LOGS_CONTEXT = 20
+NUM_LOGS_CONTEXT = 30
 
 DB_CONFIG = {
     "dbname": "rag_db",
