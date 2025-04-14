@@ -3,7 +3,7 @@
 
 > using python 3.11
 
-## Setup For Demos
+### Setup For Demos
 
 clone the repo
 
@@ -28,6 +28,7 @@ in a separate terminal, start the ollama server
 ```
 ollama run llama3.2:1b 
 ```
+## Running the Demos
 
 ### Linear Waypoints Mission Simulation
 
@@ -44,7 +45,9 @@ python3 demos/basic_rag_demo/chatapp.py
 python3 demos/basic_rag_demo/demo_rag_data.py
 ```
 
-### Handling Automatically Downloaded Files
+## Handling other things in the project 
+
+### Automatically Downloaded Files
 
 the rag demo will download files to your system and create files for storage. All of these files should be accounted for in the [.gitignore](./.gitignore){:target="_blank"}, to view your file tree, but exclude directories that have lots of "noisy files"
 ```
@@ -89,7 +92,7 @@ ln -s /mnt/hgfs/<folder_name> <link_name>
 ln -s /mnt/hgfs/shared-folder host-share
 ```
 
-### Handling Docker Compose
+### Setting up Docker Compose
 
 Install the newer docker compose on your system, i am using ubuntu
 
@@ -112,7 +115,7 @@ chmod +x $DOCKER_CONFIG/cli-plugins/docker-compose
 docker compose version
 ```
 
-Running docker compose
+### Running docker compose
 
 ```
 docker compose up
@@ -128,10 +131,29 @@ stopping docker compose
 docker compose down
 ```
 
-to remove all unused docker containers linked to the postresql pgvector image
+beginner friendly - remove everything associated with the docker compose
+```
+docker compose down -v
+```
+
+to list or remove all unused docker containers linked to the postresql pgvector image
+
 ```
 docker ps -a --filter "ancestor=ankane/pgvector:latest" -q
+```
+
+```
 docker rm $(docker ps -a --filter "ancestor=ankane/pgvector:latest" -q)
+```
+
+change permissions on pgdata directory so user can use it or remove it
+```
+sudo chown -R $USER:$USER ./pgdata
+```
+
+remove pgdata directory
+```
+rm -rf ./pgdata
 ```
 
 # TODO
