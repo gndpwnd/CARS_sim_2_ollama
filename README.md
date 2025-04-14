@@ -37,9 +37,9 @@ files in ***basic_lin_demos*** can stand on their own
 python3 demos/basic_lin/1-jam_return_safe_coords.py
 ```
 
-### Basic RAG Dmemo
+### Basic RAG Demo
 
-need a chatapp interface with ollama/LLM and data generator running at same time
+need the chatapp interface with ollama/LLM and data generator running at same time
 ```
 python3 demos/basic_rag_demo/chatapp.py
 python3 demos/basic_rag_demo/demo_rag_data.py
@@ -49,7 +49,7 @@ python3 demos/basic_rag_demo/demo_rag_data.py
 
 ### Automatically Downloaded Files
 
-the rag demo will download files to your system and create files for storage. All of these files should be accounted for in the [.gitignore](./.gitignore){:target="_blank"}, to view your file tree, but exclude directories that have lots of "noisy files"
+the rag demo will download files to your system and create files for storage. All of these files should be accounted for in the [.gitignore](https://github.com/gndpwnd/CARS_sim_2_ollama/blob/main/.gitignore), to view your file tree, but exclude directories that have lots of "noisy files"
 ```
 tree -I 'venv|__pycache__|.git'
 ```
@@ -100,11 +100,9 @@ Install the newer docker compose on your system, i am using ubuntu
 
 in one line
 ```
-
-```
 DOCKER_CONFIG=${DOCKER_CONFIG:-$HOME/.docker}; mkdir -p $DOCKER_CONFIG/cli-plugins; curl -SL https://github.com/docker/compose/releases/download/v2.35.0/docker-compose-linux-x86_64 -o $DOCKER_CONFIG/cli-plugins/docker-compose; chmod +x $DOCKER_CONFIG/cli-plugins/docker-compose; docker compose version
 ```
-```
+
 
 the commands being run
 ```
@@ -131,7 +129,7 @@ stopping docker compose
 docker compose down
 ```
 
-beginner friendly - remove everything associated with the docker compose
+beginner friendly - remove everything associated with the docker compose, except persistent volumes
 ```
 docker compose down -v
 ```

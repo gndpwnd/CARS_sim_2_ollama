@@ -117,7 +117,7 @@ Respond to the user's query based on the simulation state information provided a
         # Call the LLM with the enhanced prompt
         response = ollama.chat(
             model=LLM_MODEL,
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "system", "content": prompt}]
         )
         ollama_response = response.get('message', {}).get('content', "Sorry, I didn't understand that.")
 
@@ -127,8 +127,17 @@ Respond to the user's query based on the simulation state information provided a
         user_hash = hashlib.md5(user_message.encode()).hexdigest()[:8]
         response_hash = hashlib.md5(ollama_response.encode()).hexdigest()[:8]
 
-        add_log(f"user-{user_hash}", user_message, {"role": "user", "timestamp": timestamp})
-        add_log(f"ollama-{response_hash}", ollama_response, {"role": "ollama", "timestamp": timestamp})
+        add_log(user_message, {
+            "role": "user",
+            "timestamp": timestamp,
+            "agent_id": "user"
+        })
+
+        add_log(ollama_response, {
+            "role": "assistant",
+            "timestamp": timestamp,
+            "agent_id": "ollama"
+        })
 
         return jsonify({'response': ollama_response})
 
