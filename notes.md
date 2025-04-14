@@ -1,6 +1,11 @@
 lmm is to slow for path finding - when dojg a jammed enviornment mission, have a path funding alorigthm to do low level manuevers but also allow llm injection, the llm is a massiv permoance bottleneck for path finding.
 
-have lmm chokse what movement functikns and what pathfinding functions to run, or given data give new coordinates.
+have lmm choose what movement functikns and what pathfinding functions to run, or given data give new coordinates.
+
+
+
+The agents should move way faster than the rover. have the agents try to be equidistant from the rover (center of the rover's max distance from agents radius). then add the logic for triangulating the rover's position. Overall the agents should not just stay on the edge of the rover's radius unless the rover is completely encompassed by the jamming zone, the the agents should try to be equidistant from the rover as close as possible while still not in the jamming zone. the agents not being jammed takes priority over being equidistant. due to the agents moving faster than the rover, they should move to the rover until they meet the too close distance to other agents, then the agents should simply move in unison with the rover, not all agents should be moving behind the rover, ideally all agents would be equidistant round the rover as it is travelling, and only break away when the rover is jammed.
+
 
 
 
@@ -8,8 +13,6 @@ I have the following python script. It currently is a series of agents on a wayp
 a key feature is that when the rover gets jammed, it returns to its safe coordinates, but does not ask the llm for directions, it waits until all agents are within their "AGENT_DIST_TO_ROVER" requirement, then it continues on its path. basically, the rover is moving and the agents stay within their necessary distance to the rover, then when the rover is jammed, then as long as the agents are within their distance, the rover can keep moving. The agents need to stay out of the jamming zone. Make sure that the RAG data logs reflect they are coming from the rover and not the normal agents. Make the rover a blue color and then when it is jammed make it a yellow color.
 
 simply make a new script with helper functions for the rover, and then show me where in my current script i need to adjust for my agent's logic and add the rover logic, show me the full code for the new script, but only the parts of my current script that need to be updated
-
-
 
 
 
