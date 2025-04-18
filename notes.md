@@ -49,6 +49,3 @@ use the func call ollama script as a base for the LLM ollama to be able to inter
 
 below are my current sim, chatapp, rag store, html, and javascript nad a refernce file that allows functiona calls with the llm
 
-Research in minutes, not hours
-
-Available now for Max, coming soon to Pro

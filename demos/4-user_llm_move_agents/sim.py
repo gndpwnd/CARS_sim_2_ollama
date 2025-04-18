@@ -115,6 +115,94 @@ def limit_movement(current_pos, target_pos):
     
     return (round_coord(limited_pos[0]), round_coord(limited_pos[1]))
 
+# Add this function to the sim.py file
+
+def parse_agent_id(agent_id):
+    """
+    Parse agent ID from different formats.
+    Handles 'agent5', '5', 5, etc.
+    
+    Args:
+        agent_id: The agent ID in various formats
+        
+    Returns:
+        str: Normalized agent ID in format 'agentX'
+    """
+    # Convert to string if it's a number
+    if isinstance(agent_id, (int, float)):
+        agent_id = str(int(agent_id))
+    
+    # If it's just a number as string, add the 'agent' prefix
+    if agent_id.isdigit():
+        return f"agent{agent_id}"
+    
+    # If it already has 'agent' prefix but no number, return as is
+    if agent_id.startswith("agent"):
+        return agent_id
+    
+    # If it has some other format, try to extract the number and add prefix
+    import re
+    numbers = re.findall(r'\d+', agent_id)
+    if numbers:
+        return f"agent{numbers[0]}"
+    
+    # If all else fails, return as is
+    return agent_id
+
+
+# Modify the move_agent function to use the parse_agent_id function
+def move_agent(agent_id, target_x, target_y):
+    """
+    Move the specified agent towards the target coordinates.
+    Respects the maximum movement distance per step.
+    
+    Args:
+        agent_id (str): The ID of the agent to move.
+        target_x (float): The target x-coordinate.
+        target_y (float): The target y-coordinate.
+        
+    Returns:
+        dict: A status message and the new position.
+    """
+    # Parse the agent ID to handle different formats
+    agent_id_str = parse_agent_id(agent_id)
+    
+    # Check if agent exists
+    if agent_id_str not in swarm_pos_dict:
+        return {
+            "success": False,
+            "message": f"Agent {agent_id_str} does not exist.",
+            "position": None
+        }
+    
+    # Get current position
+    current_pos = swarm_pos_dict[agent_id_str][-1][:2]
+    
+    # Ensure target is within bounds
+    target_x = max(min(target_x, x_range[1]), x_range[0])
+    target_y = max(min(target_y, y_range[1]), y_range[0])
+    target_pos = (target_x, target_y)
+    
+    # Calculate the limited movement position
+    new_pos = limit_movement(current_pos, target_pos)
+    
+    # Update agent position
+    swarm_pos_dict[agent_id_str].append([new_pos[0], new_pos[1]])
+    position_history[agent_id_str].append(new_pos)
+    
+    # Log the movement
+    log_agent_data(agent_id_str, new_pos, {
+        'action': 'move',
+        'target': target_pos,
+        'source': 'user_command'
+    })
+    
+    return {
+        "success": True,
+        "message": f"Agent {agent_id_str} moved from {current_pos} towards {target_pos}. New position: {new_pos}",
+        "position": new_pos
+    }
+
 # Function to be called from the chatapp
 def move_agent(agent_id, target_x, target_y):
     """

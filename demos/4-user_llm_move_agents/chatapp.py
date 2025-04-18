@@ -9,6 +9,8 @@ import json
 from datetime import datetime
 from rag_store import add_log
 
+# Import simulation functions
+from sim import move_agent
 
 from llm_config import get_ollama_client, get_model_name
 ollama = get_ollama_client()
@@ -23,6 +25,35 @@ DB_CONFIG = {
     "host": "localhost",
     "port": "5432"
 }
+
+# Define the tools available to the model
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "move_agent",
+            "description": "Moves an agent to the specified coordinates",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "agent_id": {
+                        "type": "string",
+                        "description": "The ID of the agent to move (e.g., 'agent1', '1')",
+                    },
+                    "target_x": {
+                        "type": "number",
+                        "description": "The target x-coordinate (-10 to 10)",
+                    },
+                    "target_y": {
+                        "type": "number",
+                        "description": "The target y-coordinate (-10 to 10)",
+                    },
+                },
+                "required": ["agent_id", "target_x", "target_y"],
+            },
+        },
+    }
+]
 
 def fetch_logs_from_db(limit=None):
     try:
@@ -103,23 +134,69 @@ def chat():
 
         # Create a structured prompt
         prompt = f"""
-You are an assistant for a Multi-Agent Simulation system. Users can ask you about the current state of the simulation.
+You are an assistant for a Multi-Agent Simulation system. Users can ask you about the current state of the simulation or request to move agents to specific positions.
 
 CURRENT SIMULATION STATE:
 {context_text}
 
+When a user asks to move an agent, you should use the move_agent function to control the agent. For example, if the user says "move agent5 to (5,5)" or "make agent 3 go to coordinates (2,7)", you should call the move_agent function with the appropriate parameters.
+
 USER QUERY: {user_message}
 
-Respond to the user's query based on the simulation state information provided above.
+Respond to the user's query based on the simulation state information provided above. If the user wants to move an agent, use the provided function to do so and then explain what you did.
 """
 
-        # Call the LLM with the enhanced prompt
-        
+        # Call the LLM with the enhanced prompt and tools
         response = ollama.chat(
             model=LLM_MODEL,
-            messages=[{"role": "system", "content": prompt}]
+            messages=[{"role": "system", "content": prompt}],
+            tools=tools
         )
-        ollama_response = response.get('message', {}).get('content', "Sorry, I didn't understand that.")
+        
+        # Get the response message
+        message = response.get('message', {})
+        
+        # Extract any tool calls
+        tool_calls = message.get("tool_calls", [])
+        
+        # If there are tool calls, process them and build a response
+        final_response = ""
+        if tool_calls:
+            for tool_call in tool_calls:
+                function_name = tool_call.get("function", {}).get("name")
+                arguments = tool_call.get("function", {}).get("arguments", {})
+                
+                if function_name == "move_agent":
+                    # Handle 'agent' prefix in ID
+                    agent_id = arguments.get("agent_id", "")
+                    if agent_id.isdigit():
+                        agent_id = f"agent{agent_id}"
+                    
+                    # Execute the move_agent function
+                    result = move_agent(
+                        agent_id=agent_id,
+                        target_x=float(arguments.get("target_x", 0)),
+                        target_y=float(arguments.get("target_y", 0))
+                    )
+                    
+                    # Log the function call result
+                    add_log(
+                        f"Function call: move_agent({agent_id}, {arguments.get('target_x')}, {arguments.get('target_y')})",
+                        {"role": "system", "source": "function_call", "timestamp": datetime.now().isoformat()}
+                    )
+                    
+                    # Get any regular content from the response
+                    content = message.get("content", "")
+                    
+                    # Build the final response
+                    final_response = f"{content}\n\n**Action Taken**: {result['message']}"
+                    
+                    # If no content was provided by the model, create a default response
+                    if not content:
+                        final_response = f"I've moved {agent_id} towards coordinates ({arguments.get('target_x')}, {arguments.get('target_y')}).\n\n**Result**: {result['message']}"
+        else:
+            # If no tool calls, just use the regular content
+            final_response = message.get("content", "Sorry, I didn't understand that.")
 
         # Log both user message and bot response
         timestamp = datetime.now().isoformat()
@@ -131,15 +208,14 @@ Respond to the user's query based on the simulation state information provided a
             "source": "chat"
         })
 
-        add_log(ollama_response, {
+        add_log(final_response, {
             "role": "assistant",
             "timestamp": timestamp,
             "agent_id": "ollama",
             "source": "chat"
         })
 
-
-        return jsonify({'response': ollama_response})
+        return jsonify({'response': final_response})
 
     except Exception as e:
         print(f"ERROR in chat route: {e}")
