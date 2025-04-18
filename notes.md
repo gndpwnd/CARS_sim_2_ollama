@@ -20,3 +20,35 @@ I want to make a simple simulation using python and matplotlib where a rover (bl
 
 
 I have the following scripts where i try to have agents follow a rover on an xy plane and store the data for the rover and the agents in RAG. I run into the following issue, could you point out what code i need to fix? you don't need to give me an updated version of the file, just generate the new code to replace the old code.
+
+
+
+
+
+
+
+
+I have the following python simulation, flask chatapp, and rag store script. I am wanting to make a new simulation based on the old one, but the agents have no objective, there is no jamming zone, there is no automatic movement or linear anything. I simply want to make a version where the user can control agent movements from the chatapp such as a user will type:
+
+"move agent5 to (5,5)"
+
+and then agent with the id of 5 will move to the coordinates 5,5
+
+use the func call ollama script as a base for the LLM ollama to be able to interact with functions in the simulation and manual control rather than the agents prompting for new coordinates and automatically moving
+
+
+
+I am trying to make a python agent simulation where the user can control agent movements from the chatapp such as a user will type:
+
+"move agent5 to (5,5)"
+
+and then agent with the id of 5 will move to the coordinates 5,5
+
+use the func call ollama script as a base for the LLM ollama to be able to interact with functions in the simulation and manual control rather than the agents prompting for new coordinates and automatically moving
+
+
+below are my current sim, chatapp, rag store, html, and javascript nad a refernce file that allows functiona calls with the llm
+
+Research in minutes, not hours
+
+Available now for Max, coming soon to Pro
