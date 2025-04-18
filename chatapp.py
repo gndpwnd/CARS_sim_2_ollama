@@ -14,7 +14,8 @@ from llm_config import get_ollama_client, get_model_name
 ollama = get_ollama_client()
 LLM_MODEL = get_model_name()
 
-NUM_LOGS_CONTEXT = 30
+NUM_LOGS_CONTEXT = 30  # Number of logs to fetch from DB
+NUM_LOGS_FOR_LLM = 25  # Number of logs to include in LLM context
 
 DB_CONFIG = {
     "dbname": "rag_db",
@@ -84,7 +85,7 @@ def chat():
         )
         
         # Provide rich context from simulation logs
-        context_logs = logs_sorted[:15]  # Use up to 15 logs for better context
+        context_logs = logs_sorted[:NUM_LOGS_FOR_LLM]  # use up to this many logs for context
         
         # Format the context information in a clean way
         simulation_context = []

@@ -87,7 +87,6 @@ def add_log(log_text, metadata=None, agent_id=None, log_id=None):
     
     return inserted_id
 
-
 # ─── RETRIEVE SIMILAR LOGS ─────────────────────────────
 def retrieve_relevant(query, k=3):
     query_vec = model.encode([query])[0].tolist()

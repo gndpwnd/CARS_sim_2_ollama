@@ -120,7 +120,6 @@ def log_batch_of_data(agent_histories: dict, prefix="batch"):
             # Correct order of parameters: log_text, metadata, agent_id=None, log_id=None
             add_log(log_text=log_text, metadata=metadata, log_id=log_id)
 
-
 def limit_movement(current_pos, target_pos, agent_id=None):
     """Limit movement to max_movement_per_step and check distance to other agents only when near rover"""
     if isinstance(current_pos, tuple) or isinstance(current_pos, list):
