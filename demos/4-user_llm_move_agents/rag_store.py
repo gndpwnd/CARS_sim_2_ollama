@@ -1,4 +1,4 @@
-# rag_pgvector_store.py
+# rag_store.py
 import psycopg2
 from psycopg2.extras import Json
 from sentence_transformers import SentenceTransformer
@@ -26,55 +26,100 @@ def init_db(retries=5, delay=3):
                     # Ensure pgvector and pgcrypto extensions are enabled
                     try:
                         cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
-                    except psycopg2.errors.UniqueViolation:
+                        conn.commit()
+                    except (psycopg2.errors.UniqueViolation, psycopg2.errors.DuplicateObject):
+                        conn.rollback()
                         print("Vector extension already exists, skipping creation.")
 
                     try:
                         cur.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto;")
-                    except psycopg2.errors.UniqueViolation:
+                        conn.commit()
+                    except (psycopg2.errors.UniqueViolation, psycopg2.errors.DuplicateObject):
+                        conn.rollback()
                         print("Pgcrypto extension already exists, skipping creation.")
 
-                    conn.commit()
-
-                    # Create logs table with auto-generated UUID and timestamp
-                    cur.execute(f"""
-                        CREATE TABLE IF NOT EXISTS logs (
-                            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                            text TEXT NOT NULL,
-                            metadata JSONB,
-                            embedding vector({VECTOR_DIM}),
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    # Check if logs table exists before creating it
+                    cur.execute("""
+                        SELECT EXISTS (
+                            SELECT FROM information_schema.tables 
+                            WHERE table_schema = 'public'
+                            AND table_name = 'logs'
                         );
                     """)
-
-                    # Create index on agent_id for faster queries
-                    cur.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_logs_agent_id ON logs ((metadata->>'agent_id'));
-                    """)
-
-                    # Create index on timestamp for time-based queries
-                    cur.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs ((metadata->>'timestamp'));
-                    """)
+                    table_exists = cur.fetchone()[0]
+                    
+                    if not table_exists:
+                        # Create logs table with auto-generated UUID and timestamp
+                        try:
+                            cur.execute(f"""
+                                CREATE TABLE logs (
+                                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                                    text TEXT NOT NULL,
+                                    metadata JSONB,
+                                    embedding vector({VECTOR_DIM}),
+                                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                                );
+                            """)
+                            conn.commit()
+                        except psycopg2.errors.UniqueViolation as e:
+                            conn.rollback()
+                            print(f"Table creation failed: {e}")
+                            
+                            # Try a different approach if there's a name conflict
+                            cur.execute("""
+                                DROP TYPE IF EXISTS logs CASCADE;
+                            """)
+                            conn.commit()
+                            
+                            cur.execute(f"""
+                                CREATE TABLE logs (
+                                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                                    text TEXT NOT NULL,
+                                    metadata JSONB,
+                                    embedding vector({VECTOR_DIM}),
+                                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                                );
+                            """)
+                            conn.commit()
+                    
+                    # Create indices if they don't exist
+                    try:
+                        # Create index on agent_id for faster queries
+                        cur.execute("""
+                            CREATE INDEX IF NOT EXISTS idx_logs_agent_id ON logs ((metadata->>'agent_id'));
+                        """)
+                                            
+                        # Create index on timestamp for time-based queries
+                        cur.execute("""
+                            CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs ((metadata->>'timestamp'));
+                        """)
+                        conn.commit()
+                    except psycopg2.Error as e:
+                        conn.rollback()
+                        print(f"Error creating indices: {e}")
 
                     # Ensure the embedding column is of type vector
-                    cur.execute(f"""
-                        DO $$
-                        BEGIN
-                            IF NOT EXISTS (
-                                SELECT 1
-                                FROM information_schema.columns
-                                WHERE table_name = 'logs'
-                                AND column_name = 'embedding'
-                                AND udt_name = 'vector'
-                            ) THEN
-                                ALTER TABLE logs
-                                ALTER COLUMN embedding TYPE vector({VECTOR_DIM});
-                            END IF;
-                        END $$;
-                    """)
+                    try:
+                        cur.execute(f"""
+                            DO $$
+                            BEGIN
+                                IF NOT EXISTS (
+                                    SELECT 1
+                                    FROM information_schema.columns
+                                    WHERE table_name = 'logs'
+                                    AND column_name = 'embedding'
+                                    AND udt_name = 'vector'
+                                ) THEN
+                                    ALTER TABLE logs
+                                    ALTER COLUMN embedding TYPE vector({VECTOR_DIM}) USING embedding::vector({VECTOR_DIM});
+                                END IF;
+                            END $$;
+                        """)
+                        conn.commit()
+                    except psycopg2.Error as e:
+                        conn.rollback()
+                        print(f"Error altering column type: {e}")
                     
-                    conn.commit()
             print("✅ Database initialized successfully.")
             return
         except psycopg2.OperationalError:
@@ -82,7 +127,9 @@ def init_db(retries=5, delay=3):
             time.sleep(delay)
         except Exception as e:
             print("❌ Failed to initialize database:", e)
-            raise
+            time.sleep(delay)
+            if attempt == retries - 1:
+                raise
 
     raise RuntimeError("PostgreSQL not available after multiple attempts.")
 
@@ -132,8 +179,8 @@ def retrieve_relevant(query, k=3):
             "text": row[1],
             "metadata": row[2],
             "created_at": row[3],
-            "comm_quality": row[2].get("comm_quality"),
-            "position": row[2].get("position")
+            "comm_quality": row[2].get("comm_quality") if row[2] else None,
+            "position": row[2].get("position") if row[2] else None
         }
         for row in results
     ]
@@ -207,4 +254,8 @@ def clear_store():
         conn.commit()
 
 # ─── INIT ON IMPORT ────────────────────────────────────
-init_db()
+try:
+    init_db()
+except Exception as e:
+    print(f"Database initialization failed, but continuing anyway: {e}")
+    print("You may need to manually check and fix your database schema.")

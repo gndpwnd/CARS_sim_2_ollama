@@ -49,3 +49,7 @@ use the func call ollama script as a base for the LLM ollama to be able to inter
 
 below are my current sim, chatapp, rag store, html, and javascript nad a refernce file that allows functiona calls with the llm
 
+
+
+
+I am currently trying to integrate user to llm to function call in my agent simulation. I currently have the follwoing code and get the following results. I ultimately want to be able to have the user send a message to the llm and have the llm make a function call to move an agent to a coordinate.

@@ -1,3 +1,5 @@
+# sim.py 
+
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
 from matplotlib.animation import FuncAnimation
@@ -13,10 +15,8 @@ from rag_store import add_log
 from simulation_controller import (
     initialize_agents, 
     stop_simulation, 
-    position_history,
     x_range,
     y_range,
-    max_movement_per_step,
     start_simulation
 )
 

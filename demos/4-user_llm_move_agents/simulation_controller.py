@@ -2,16 +2,18 @@
 import random
 import numpy as np
 import datetime
-import threading
 import time
 from rag_store import add_log
+import threading
+
 
 # Simulation configuration
 x_range = (-10, 10)
 y_range = (-10, 10)
-num_agents = 5
+num_agents = 1
 max_movement_per_step = np.sqrt((x_range[1] - x_range[0])**2 + (y_range[1] - y_range[0])**2) / 20
 MAX_POSITIONS = 10  # Maximum number of positions to keep in swarm_pos_dict for each agent
+UPDATE_FREQ = 3  # Frequency of updates in seconds
 
 # State management
 swarm_pos_dict = {}
@@ -24,7 +26,7 @@ def round_coord(value):
     return round(value, 3)
 
 def convert_numpy_coords(obj):
-    """Convert numpy data types to native Python types for JSON serialization."""
+    """Convert numpy data types to native Python types for JSON serialization and display."""
     if isinstance(obj, (np.integer,)):
         return int(obj)
     elif isinstance(obj, (np.floating,)):
@@ -83,9 +85,6 @@ def log_batch_of_data(agent_histories: dict, prefix="batch"):
             }
 
             add_log(log_text=log_text, metadata=metadata, log_id=log_id)
-
-from rag_store import add_log
-import datetime
 
 # Track previous positions to avoid redundant logging
 previous_positions = {}
@@ -163,8 +162,8 @@ def update_simulation():
                 'source': 'simulation'
             })
 
-        print(f"[DEBUG] Updated swarm_pos_dict: {swarm_pos_dict}")
-        time.sleep(2)  # Update every 2 seconds
+        print(f"[DEBUG] Updated swarm_pos_dict: {convert_numpy_coords(swarm_pos_dict)}")
+        time.sleep(UPDATE_FREQ)
 
 
 def limit_movement(current_pos, target_pos):
