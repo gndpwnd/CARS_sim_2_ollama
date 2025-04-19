@@ -1,22 +1,28 @@
-# This is a simple Flask app that serves as a chat interface for an LLM (Large Language Model) and displaying logs.
+# This is a Flask app that serves as a chat interface for an LLM to control agents in a simulation
 from flask import Flask, render_template, request, jsonify
 import sys
 import traceback
-import hashlib
 from datetime import datetime
 import psycopg2
 import json
-from datetime import datetime
-from rag_store import add_log
+import re
+from rag_store import retrieve_relevant
 
 # Import simulation functions
-from sim import move_agent
+from simulation_controller import (
+    move_agent, 
+    check_simulation_status, 
+    swarm_pos_dict,
+    initialize_agents,
+    start_simulation
+)
 
 from llm_config import get_ollama_client, get_model_name
 ollama = get_ollama_client()
 LLM_MODEL = get_model_name()
 
-NUM_LOGS_CONTEXT = 20
+NUM_LOGS_CONTEXT = 30  # Number of logs to fetch from DB
+NUM_LOGS_FOR_LLM = 20  # Number of logs to use for LLM context
 
 DB_CONFIG = {
     "dbname": "rag_db",
@@ -87,6 +93,8 @@ app = Flask(__name__)
 @app.route('/')
 def index():
     try:
+        # Make sure simulation is active when someone loads the page
+        check_simulation_status()
         return render_template('index.html')
     except Exception as e:
         error_msg = f"ERROR: Could not render template 'index.html': {e}"
@@ -97,6 +105,32 @@ def index():
 def test():
     return "Flask server is running correctly!"
 
+def parse_move_command(user_message):
+    """
+    Manually parse move commands if the LLM doesn't use function calling.
+    Returns agent_id, target_x, target_y if successful, None otherwise.
+    """
+    # Match patterns like: move agent4 to 5,5 or move agent4 to (5,5)
+    move_pattern = r"move (?:agent)?(\d+) to (?:\()?(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)(?:\))?"
+    
+    # Match patterns like: send agent3 to position x=6,y=-7
+    send_pattern = r"send (?:agent)?(\d+) to position x=(-?\d+\.?\d*)[,\s]*y=(-?\d+\.?\d*)"
+    
+    # Try the move pattern first
+    match = re.search(move_pattern, user_message, re.IGNORECASE)
+    if not match:
+        # Try the send pattern
+        match = re.search(send_pattern, user_message, re.IGNORECASE)
+    
+    if match:
+        agent_num, x_str, y_str = match.groups()
+        agent_id = f"agent{agent_num}"
+        target_x = float(x_str)
+        target_y = float(y_str)
+        return agent_id, target_x, target_y
+    
+    return None
+
 @app.route('/chat', methods=['POST'])
 def chat():
     try:
@@ -104,118 +138,53 @@ def chat():
         if not user_message:
             return jsonify({'error': 'No message provided'}), 400
 
-        # Get ALL recent logs for context
-        logs = fetch_logs_from_db(limit=NUM_LOGS_CONTEXT)
-        print(f"Retrieved {len(logs)} logs for context")
-        
-        logs_sorted = sorted(
-            logs,
-            key=lambda x: x.get("metadata", {}).get("timestamp", x.get("log_id", "")),
-            reverse=True
-        )
-        
-        # Provide rich context from simulation logs
-        context_logs = logs_sorted[:15]  # Use up to 15 logs for better context
-        
-        # Format the context information in a clean way
+        # Fetch relevant logs for context
+        logs = retrieve_relevant(user_message, k=NUM_LOGS_FOR_LLM)
         simulation_context = []
-        for log in context_logs:
+        for log in logs:
             agent_id = log.get("metadata", {}).get("agent_id", "Unknown")
             position = log.get("metadata", {}).get("position", "Unknown")
             jammed = "JAMMED" if log.get("metadata", {}).get("jammed", False) else "CLEAR"
             timestamp = log.get("metadata", {}).get("timestamp", "Unknown time")
-            
-            # Create a structured context entry
             entry = f"Agent {agent_id} at position {position} is {jammed} at {timestamp}"
             simulation_context.append(entry)
-        
-        # Join all context entries
+
         context_text = "\n".join(simulation_context)
 
-        # Create a structured prompt
+        # Create a structured prompt for the LLM
         prompt = f"""
-You are an assistant for a Multi-Agent Simulation system. Users can ask you about the current state of the simulation or request to move agents to specific positions.
+You are an assistant for a Multi-Agent Simulation system. Users can ask you about the current state of the simulation.
 
 CURRENT SIMULATION STATE:
 {context_text}
 
-When a user asks to move an agent, you should use the move_agent function to control the agent. For example, if the user says "move agent5 to (5,5)" or "make agent 3 go to coordinates (2,7)", you should call the move_agent function with the appropriate parameters.
-
 USER QUERY: {user_message}
 
-Respond to the user's query based on the simulation state information provided above. If the user wants to move an agent, use the provided function to do so and then explain what you did.
+Respond to the user's query based on the simulation state information provided above.
 """
 
-        # Call the LLM with the enhanced prompt and tools
+        # Call the LLM with the enhanced prompt
         response = ollama.chat(
             model=LLM_MODEL,
-            messages=[{"role": "system", "content": prompt}],
-            tools=tools
+            messages=[{"role": "system", "content": prompt}]
         )
-        
-        # Get the response message
-        message = response.get('message', {})
-        
-        # Extract any tool calls
-        tool_calls = message.get("tool_calls", [])
-        
-        # If there are tool calls, process them and build a response
-        final_response = ""
-        if tool_calls:
-            for tool_call in tool_calls:
-                function_name = tool_call.get("function", {}).get("name")
-                arguments = tool_call.get("function", {}).get("arguments", {})
-                
-                if function_name == "move_agent":
-                    # Handle 'agent' prefix in ID
-                    agent_id = arguments.get("agent_id", "")
-                    if agent_id.isdigit():
-                        agent_id = f"agent{agent_id}"
-                    
-                    # Execute the move_agent function
-                    result = move_agent(
-                        agent_id=agent_id,
-                        target_x=float(arguments.get("target_x", 0)),
-                        target_y=float(arguments.get("target_y", 0))
-                    )
-                    
-                    # Log the function call result
-                    add_log(
-                        f"Function call: move_agent({agent_id}, {arguments.get('target_x')}, {arguments.get('target_y')})",
-                        {"role": "system", "source": "function_call", "timestamp": datetime.now().isoformat()}
-                    )
-                    
-                    # Get any regular content from the response
-                    content = message.get("content", "")
-                    
-                    # Build the final response
-                    final_response = f"{content}\n\n**Action Taken**: {result['message']}"
-                    
-                    # If no content was provided by the model, create a default response
-                    if not content:
-                        final_response = f"I've moved {agent_id} towards coordinates ({arguments.get('target_x')}, {arguments.get('target_y')}).\n\n**Result**: {result['message']}"
-        else:
-            # If no tool calls, just use the regular content
-            final_response = message.get("content", "Sorry, I didn't understand that.")
+        ollama_response = response.get('message', {}).get('content', "Sorry, I didn't understand that.")
 
-        # Log both user message and bot response
-        timestamp = datetime.now().isoformat()
+        # Check if the LLM issued a move command
+        move_command = parse_move_command(ollama_response)
+        if move_command:
+            agent_id, target_x, target_y = move_command
+            print(f"[DEBUG] LLM issued move command: {agent_id} to ({target_x}, {target_y})")
+            try:
+                # Call the move_agent function to update the simulation
+                result = move_agent(agent_id, target_x, target_y)
+                print(f"[DEBUG] move_agent result: {result}")
+                return jsonify({'response': result['message']})
+            except Exception as e:
+                print(f"Error moving agent: {e}")
+                return jsonify({'error': f"Failed to move agent: {e}"}), 500
 
-        add_log(user_message, {
-            "role": "user",
-            "timestamp": timestamp,
-            "agent_id": "user",
-            "source": "chat"
-        })
-
-        add_log(final_response, {
-            "role": "assistant",
-            "timestamp": timestamp,
-            "agent_id": "ollama",
-            "source": "chat"
-        })
-
-        return jsonify({'response': final_response})
+        return jsonify({'response': ollama_response})
 
     except Exception as e:
         print(f"ERROR in chat route: {e}")
@@ -229,7 +198,7 @@ def get_logs():
         logs = fetch_logs_from_db(limit=100)
         return jsonify({
             "logs": logs,
-            "has_more": False  # You could paginate in future
+            "has_more": False
         })
     except Exception as e:
         print(f"Error in /logs route: {e}")
@@ -238,9 +207,7 @@ def get_logs():
 
 @app.route("/log_count")
 def log_count():
-    """
-    Return the current number of logs in the system.
-    """
+    """Return the current number of logs in the system."""
     try:
         logs = fetch_logs_from_db()
         return jsonify({"log_count": len(logs)})
@@ -249,9 +216,9 @@ def log_count():
         return jsonify({"error": "Internal server error"}), 500
 
 
-
 if __name__ == '__main__':
     print("Starting Flask app...")
     print(f"Python version: {sys.version}")
     print("Visit http://127.0.0.1:5000")
+    # Initialize the simulation when the app starts
     app.run(debug=True)

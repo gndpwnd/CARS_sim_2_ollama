@@ -24,8 +24,16 @@ def init_db(retries=5, delay=3):
             with psycopg2.connect(**DB_CONFIG) as conn:
                 with conn.cursor() as cur:
                     # Ensure pgvector and pgcrypto extensions are enabled
-                    cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
-                    cur.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto;")
+                    try:
+                        cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+                    except psycopg2.errors.UniqueViolation:
+                        print("Vector extension already exists, skipping creation.")
+
+                    try:
+                        cur.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto;")
+                    except psycopg2.errors.UniqueViolation:
+                        print("Pgcrypto extension already exists, skipping creation.")
+
                     conn.commit()
 
                     # Create logs table with auto-generated UUID and timestamp
@@ -47,6 +55,23 @@ def init_db(retries=5, delay=3):
                     # Create index on timestamp for time-based queries
                     cur.execute("""
                         CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs ((metadata->>'timestamp'));
+                    """)
+
+                    # Ensure the embedding column is of type vector
+                    cur.execute(f"""
+                        DO $$
+                        BEGIN
+                            IF NOT EXISTS (
+                                SELECT 1
+                                FROM information_schema.columns
+                                WHERE table_name = 'logs'
+                                AND column_name = 'embedding'
+                                AND udt_name = 'vector'
+                            ) THEN
+                                ALTER TABLE logs
+                                ALTER COLUMN embedding TYPE vector({VECTOR_DIM});
+                            END IF;
+                        END $$;
                     """)
                     
                     conn.commit()
@@ -96,7 +121,7 @@ def retrieve_relevant(query, k=3):
             cur.execute(f"""
                 SELECT id, text, metadata, created_at
                 FROM logs
-                ORDER BY embedding <-> %s
+                ORDER BY embedding <-> CAST(%s AS vector)
                 LIMIT %s;
             """, (query_vec, k))
             results = cur.fetchall()

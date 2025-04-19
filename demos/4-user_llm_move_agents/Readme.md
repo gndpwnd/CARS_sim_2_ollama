@@ -1,5 +1,6 @@
 # RAG Integration with LLM and Agent Jamming Simulation
 
+> docker compose down -v; sudo chown -R $USER:$USER ./pgdata; rm -rf ./pgdata; docker compose up -d; python3 sim.py
 
 ### Run the simulation
 
