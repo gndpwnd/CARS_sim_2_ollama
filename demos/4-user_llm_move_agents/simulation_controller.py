@@ -21,6 +21,9 @@ position_history = {}
 simulation_active = False
 simulation_thread = None
 
+# Track user-assigned targets
+agent_targets = {}  # Dictionary to store user-assigned targets {agent_id: (target_x, target_y)}
+
 def round_coord(value):
     """Round coordinates to 3 decimal places"""
     return round(value, 3)
@@ -128,22 +131,45 @@ def log_agent_data(agent_id, position, metadata=None):
     add_log(log_text=log_text, metadata=log_metadata)
     print(f"[LOGGING] Logged data for agent {agent_id} at {position}")
 
+def is_close_to_target(position, target, threshold=0.5):
+    """Check if position is close to target within threshold"""
+    pos_np = np.array(position)
+    target_np = np.array(target)
+    distance = np.linalg.norm(pos_np - target_np)
+    return distance <= threshold
+
 def update_simulation():
     """Periodically update the simulation and log agent positions."""
-    global simulation_active
+    global simulation_active, agent_targets
 
     while simulation_active:
         for agent_id, positions in swarm_pos_dict.items():
             # Get the current position (most recent)
             current_pos = positions[-1][:2]
-
-            # Generate a random target position within bounds
-            target_x = round_coord(random.uniform(x_range[0], x_range[1]))
-            target_y = round_coord(random.uniform(y_range[0], y_range[1]))
-            target_pos = (target_x, target_y)
-
-            # Calculate the limited movement position
-            new_pos = limit_movement(current_pos, target_pos)
+            
+            # Check if the agent has a user-assigned target
+            if agent_id in agent_targets:
+                # Move towards user-assigned target
+                target_pos = agent_targets[agent_id]
+                
+                # Calculate the limited movement position
+                new_pos = limit_movement(current_pos, target_pos)
+                
+                # Check if we've reached the target (within threshold)
+                if is_close_to_target(new_pos, target_pos):
+                    # Target reached, remove it from agent_targets
+                    del agent_targets[agent_id]
+                    add_log(f"Agent {agent_id} has reached target {target_pos}", 
+                            metadata={"agent_id": agent_id, "action": "target_reached"})
+                    print(f"[DEBUG] Agent {agent_id} reached target {target_pos}")
+            else:
+                # No user target, generate a random movement
+                target_x = round_coord(random.uniform(x_range[0], x_range[1]))
+                target_y = round_coord(random.uniform(y_range[0], y_range[1]))
+                target_pos = (target_x, target_y)
+                
+                # Calculate the limited movement position
+                new_pos = limit_movement(current_pos, target_pos)
 
             # Update agent position in swarm_pos_dict
             swarm_pos_dict[agent_id].append([new_pos[0], new_pos[1]])
@@ -159,7 +185,7 @@ def update_simulation():
             log_agent_data(agent_id, new_pos, {
                 'action': 'move',
                 'target': target_pos,
-                'source': 'simulation'
+                'source': 'simulation' if agent_id not in agent_targets else 'user_command'
             })
 
         print(f"[DEBUG] Updated swarm_pos_dict: {convert_numpy_coords(swarm_pos_dict)}")
@@ -283,7 +309,10 @@ def move_agent(agent_id, target_x, target_y):
     target_y = max(min(float(target_y), y_range[1]), y_range[0])
     target_pos = (target_x, target_y)
     
-    # Calculate the limited movement position
+    # Save the target for continuous movement in the update loop
+    agent_targets[agent_id_str] = target_pos
+    
+    # Calculate the limited movement position for immediate update
     new_pos = limit_movement(current_pos, target_pos)
     
     # Update agent position
@@ -298,9 +327,12 @@ def move_agent(agent_id, target_x, target_y):
     })
     
     print(f"[DEBUG] Agent {agent_id_str} moved to {new_pos}")
+    # Calculate remaining distance to target
+    distance_to_target = np.linalg.norm(np.array(new_pos) - np.array(target_pos))
+    
     return {
         "success": True,
-        "message": f"Agent {agent_id_str} moved from {current_pos} towards {target_pos}. New position: {new_pos}",
+        "message": f"Agent {agent_id_str} moved from {current_pos} towards {target_pos}. New position: {new_pos}. Distance to target: {round(distance_to_target, 3)}",
         "position": new_pos
     }
 
@@ -314,7 +346,17 @@ def stop_simulation():
 
 def get_agent_positions():
     """Get current positions of all agents"""
-    return {agent_id: positions[-1][:2] for agent_id, positions in swarm_pos_dict.items()}
+    positions_dict = {agent_id: positions[-1][:2] for agent_id, positions in swarm_pos_dict.items()}
+    
+    # Add information about user-assigned targets
+    for agent_id, target in agent_targets.items():
+        if agent_id in positions_dict:
+            positions_dict[agent_id] = (
+                positions_dict[agent_id], 
+                f"Moving to target {target}"
+            )
+    
+    return positions_dict
 
 def check_simulation_status():
     """Check if simulation is running and initialize if not"""

@@ -1,5 +1,6 @@
 # func_call_ollama.py
 import ollama
+from llm_config import LLM_MODEL
 
 def generate_file(filename: str, content: str) -> str:
     """
@@ -47,7 +48,7 @@ prompt = "Create a file named 'example.txt' with the following content: 'This is
 
 # Call the Ollama API with the prompt and tools
 response = ollama.chat(
-    model="llama3.2:1b",  # Replace with your model
+    model=LLM_MODEL,  # Replace with your model
     messages=[{"role": "user", "content": prompt}],
     tools=tools,
 )

@@ -3,6 +3,30 @@ lmm is to slow for path finding - when dojg a jammed enviornment mission, have a
 have lmm choose what movement functikns and what pathfinding functions to run, or given data give new coordinates.
 
 
+text gen models : unsupervised learning more or less on the contents of the dataset
+
+instruct models: text gen models that have undergone supervised fine tuning to ensure that the llm responds in a Q+A style format
+
+
+k models, km vs ks
+
+
+k_s models for whatever reason are a little slower than k_m models. k models are k-quant models and generally have less perplexity loss relative to size. A q4_K_M model will have much less perplexity loss than a q4_0 or even a q4_1 model.
+
+q4_k_m vs q4_k_s
+
+k_m vs k_s vs k_l - level of optimization of quantization of model - the idea is to reduce the size of the model without losing quality/precision - k_l is the largest "least optimized for size" and k_s is the small "more optimized for siz". "more optimized" does not mean better for what you are doing though.
+
+
+https://www.reddit.com/r/LocalLLaMA/comments/159nrh5/the_difference_between_quantization_methods_for/
+
+https://github.com/ggerganov/llama.cpp/pull/1684#issuecomment-1579252501
+
+https://github.com/ggml-org/llama.cpp/pull/1684
+
+
+https://huggingface.co/spaces/Krisseck/IFEval-Leaderboard
+
 
 The agents should move way faster than the rover. have the agents try to be equidistant from the rover (center of the rover's max distance from agents radius). then add the logic for triangulating the rover's position. Overall the agents should not just stay on the edge of the rover's radius unless the rover is completely encompassed by the jamming zone, the the agents should try to be equidistant from the rover as close as possible while still not in the jamming zone. the agents not being jammed takes priority over being equidistant. due to the agents moving faster than the rover, they should move to the rover until they meet the too close distance to other agents, then the agents should simply move in unison with the rover, not all agents should be moving behind the rover, ideally all agents would be equidistant round the rover as it is travelling, and only break away when the rover is jammed. Agents need to find where in the rover's radius they will not be too close to each other, then the agent that has the greatest number in their id is the first one to move to fix the agents to close together issue.
 
