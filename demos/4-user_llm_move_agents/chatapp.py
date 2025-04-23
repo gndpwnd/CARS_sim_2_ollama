@@ -33,27 +33,27 @@ DB_CONFIG = {
     "port": "5432"
 }
 
-# Define the tools available to the model
+# Define the tools available to the model with improved descriptions
 tools = [
     {
         "type": "function",
         "function": {
-            "name": "move_agent",
-            "description": "Moves an agent to the specified coordinates within the simulation",
+            "name": "add_waypoint",
+            "description": "Adds a waypoint for an agent. The agent will move to the waypoint autonomously. Once the waypoint is reached, the agent will proceed to the next waypoint or resume random movement.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "agent_id": {
                         "type": "string",
-                        "description": "The ID of the agent to move (e.g., 'agent1', '1')",
+                        "description": "The ID of the agent to add the waypoint for (e.g., 'agent1', '1').",
                     },
                     "target_x": {
                         "type": "number",
-                        "description": "The target x-coordinate (-10 to 10)",
+                        "description": "The x-coordinate of the waypoint (-10 to 10).",
                     },
                     "target_y": {
                         "type": "number",
-                        "description": "The target y-coordinate (-10 to 10)",
+                        "description": "The y-coordinate of the waypoint (-10 to 10).",
                     },
                 },
                 "required": ["agent_id", "target_x", "target_y"],
@@ -64,7 +64,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "get_agent_positions",
-            "description": "Returns the current positions of all agents in the simulation",
+            "description": "Returns the current positions of all agents in the simulation, including their movement status and destination if applicable.",
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -129,18 +129,18 @@ def parse_move_command(user_message):
     # Match patterns like: send agent3 to position x=6,y=-7
     send_pattern = r"send (?:agent)?(\d+) to position x=(-?\d+\.?\d*)[,\s]*y=(-?\d+\.?\d*)"
     
-    # Try the move pattern first
-    match = re.search(move_pattern, user_message, re.IGNORECASE)
-    if not match:
-        # Try the send pattern
-        match = re.search(send_pattern, user_message, re.IGNORECASE)
+    # Match patterns like: agent2 go to coordinates 4,8
+    go_pattern = r"(?:agent)?(\d+) go to coordinates (?:\()?(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)(?:\))?"
     
-    if match:
-        agent_num, x_str, y_str = match.groups()
-        agent_id = f"agent{agent_num}"
-        target_x = float(x_str)
-        target_y = float(y_str)
-        return agent_id, target_x, target_y
+    # Try each pattern in sequence
+    for pattern in [move_pattern, send_pattern, go_pattern]:
+        match = re.search(pattern, user_message, re.IGNORECASE)
+        if match:
+            agent_num, x_str, y_str = match.groups()
+            agent_id = f"agent{agent_num}"
+            target_x = float(x_str)
+            target_y = float(y_str)
+            return agent_id, target_x, target_y
     
     return None
 
@@ -151,28 +151,57 @@ def chat():
         if not user_message:
             return jsonify({'error': 'No message provided'}), 400
 
-        # Fetch relevant logs for context
-        logs = retrieve_relevant(user_message, k=NUM_LOGS_FOR_LLM)
-        simulation_context = []
-        for log in logs:
-            agent_id = log.get("metadata", {}).get("agent_id", "Unknown")
-            position = log.get("metadata", {}).get("position", "Unknown")
-            jammed = "JAMMED" if log.get("metadata", {}).get("jammed", False) else "CLEAR"
-            timestamp = log.get("metadata", {}).get("timestamp", "Unknown time")
-            entry = f"Agent {agent_id} at position {position} is {jammed} at {timestamp}"
-            simulation_context.append(entry)
+        # Check for a direct move command to handle it as adding a waypoint
+        move_command = parse_move_command(user_message)
+        if move_command:
+            agent_id, target_x, target_y = move_command
+            print(f"[DEBUG] Direct parse of move command: {agent_id} to ({target_x}, {target_y})")
+            try:
+                # Add the waypoint for the agent
+                from simulation_controller import add_waypoint
+                add_waypoint(agent_id, target_x, target_y)
+                return jsonify({
+                    'response': f"Waypoint ({target_x}, {target_y}) added for {agent_id}. The agent will move to this waypoint."
+                })
+            except Exception as e:
+                print(f"Error adding waypoint: {e}")
+                return jsonify({'response': f"Failed to add waypoint: {e}"})
 
-        context_text = "\n".join(simulation_context)
-        
-        # Get current agent positions for better context
-        current_positions = get_agent_positions()
-        positions_text = "\n".join([f"Agent {agent_id} is currently at position {pos}" 
-                                   for agent_id, pos in current_positions.items()])
+        # Check if the user wants to retrieve agent positions
+        if "agent positions" in user_message.lower() or "current positions" in user_message.lower():
+            try:
+                positions = get_agent_positions()
+                positions_text = "\n".join(
+                    f"Agent {agent_id} is currently at position {pos}" for agent_id, pos in positions.items()
+                )
+                return jsonify({'response': f"Current agent positions:\n{positions_text}"})
+            except Exception as e:
+                print(f"Error retrieving agent positions: {e}")
+                return jsonify({'response': f"Failed to retrieve agent positions: {e}"})
 
-        # Create a clearer prompt for the LLM with stronger guidance
-        prompt = f"""
+        # If not a direct move command or position request, use the LLM for other queries
+        try:
+            # Fetch relevant logs and context for the LLM
+            logs = retrieve_relevant(user_message, k=NUM_LOGS_FOR_LLM)
+            simulation_context = []
+            for log in logs:
+                agent_id = log.get("metadata", {}).get("agent_id", "Unknown")
+                position = log.get("metadata", {}).get("position", "Unknown")
+                jammed = "JAMMED" if log.get("metadata", {}).get("jammed", False) else "CLEAR"
+                timestamp = log.get("metadata", {}).get("timestamp", "Unknown time")
+                entry = f"Agent {agent_id} at position {position} is {jammed} at {timestamp}"
+                simulation_context.append(entry)
+
+            context_text = "\n".join(simulation_context)
+            current_positions = get_agent_positions()
+            positions_text = "\n".join(
+                f"Agent {agent_id} is currently at position {pos}" for agent_id, pos in current_positions.items()
+            )
+
+            # Create a prompt for the LLM
+            prompt = f"""
 You are an assistant for a Multi-Agent Simulation system. Users can ask you about the current state of the simulation 
-and request you to move agents to new coordinates.
+and request you to add waypoints for agents. The simulation will handle moving agents to their waypoints.
 
 CURRENT SIMULATION STATE:
 {positions_text}
@@ -180,108 +209,27 @@ CURRENT SIMULATION STATE:
 RECENT LOG HISTORY:
 {context_text}
 
-IMPORTANT: When the user wants to move an agent, you MUST use the move_agent function to do so.
-DO NOT respond with code snippets or explanations. Simply call the function with the appropriate parameters.
-
-The move_agent function requires:
-- agent_id: The ID of the agent (format: "agent1", "1", etc.)
-- target_x: The target x-coordinate (between -10 and 10)
-- target_y: The target y-coordinate (between -10 and 10)
-
-If the user asks about agent positions, use the get_agent_positions function.
-
 USER QUERY: {user_message}
 
-Respond directly to the user's query based on the simulation state. If they ask to move an agent, call the appropriate function.
+Respond directly to the user's query based on the simulation state. If they ask to move an agent, add a waypoint for the agent.
 """
 
-        # First, check for a direct move command to handle it immediately if present
-        move_command = parse_move_command(user_message)
-        if move_command:
-            agent_id, target_x, target_y = move_command
-            print(f"[DEBUG] Direct parse of move command: {agent_id} to ({target_x}, {target_y})")
-            try:
-                result = move_agent(agent_id, target_x, target_y)
-                return jsonify({
-                    'response': f"Moving {agent_id} to ({target_x}, {target_y}).\n\n{result['message']}"
-                })
-            except Exception as e:
-                print(f"Error moving agent directly: {e}")
-                return jsonify({'response': f"Failed to move agent: {e}"})
+            # Call the LLM
+            response = ollama.chat(
+                model=LLM_MODEL,
+                messages=[{"role": "system", "content": prompt}],
+                tools=tools
+            )
+            return jsonify({'response': response.get('message', {}).get('content', "Sorry, I didn't understand that.")})
 
-        # If not a direct move command, try using the LLM with function calling
-        response = ollama.chat(
-            model=LLM_MODEL,
-            messages=[{"role": "system", "content": prompt}],
-            tools=tools
-        )
-        
-        # Extract the message and any tool calls
-        message = response.get('message', {})
-        tool_calls = message.get('tool_calls', [])
-        
-        print(f"[DEBUG] LLM response: {message}")
-        print(f"[DEBUG] Tool calls detected: {tool_calls}")
-        
-        # Process any function calls first
-        if tool_calls:
-            results = []
-            for tool_call in tool_calls:
-                function_name = tool_call.get('function', {}).get('name')
-                arguments = json.loads(tool_call.get('function', {}).get('arguments', '{}'))
-                
-                print(f"[DEBUG] Function call: {function_name} with args: {arguments}")
-                
-                if function_name == "move_agent":
-                    try:
-                        result = move_agent(
-                            arguments.get('agent_id'), 
-                            arguments.get('target_x'), 
-                            arguments.get('target_y')
-                        )
-                        results.append(result)
-                    except Exception as e:
-                        print(f"Error executing move_agent: {e}")
-                        results.append({"success": False, "message": f"Error: {str(e)}"})
-                
-                elif function_name == "get_agent_positions":
-                    try:
-                        positions = get_agent_positions()
-                        results.append({"success": True, "positions": positions})
-                    except Exception as e:
-                        print(f"Error getting agent positions: {e}")
-                        results.append({"success": False, "message": f"Error: {str(e)}"})
-            
-            # Format the results for the user
-            result_messages = [r.get('message', str(r)) for r in results if r.get('success', False)]
-            if result_messages:
-                # Lead with the action taken, then provide the LLM's response
-                response_content = "Action completed:\n" + "\n".join(result_messages) + "\n\n" + message.get('content', '')
-            else:
-                response_content = message.get('content', '') + "\n\nI tried to perform an action but encountered an error."
-                
-            return jsonify({'response': response_content})
-        
-        # Check if we can still parse a move command from the LLM's response as fallback
-        ollama_response = message.get('content', "Sorry, I didn't understand that.")
-        move_command = parse_move_command(ollama_response)
-        if move_command:
-            agent_id, target_x, target_y = move_command
-            print(f"[DEBUG] Parsed move command from LLM text: {agent_id} to ({target_x}, {target_y})")
-            try:
-                result = move_agent(agent_id, target_x, target_y)
-                return jsonify({'response': f"Moving {agent_id} to ({target_x}, {target_y}).\n\n{result['message']}"})
-            except Exception as e:
-                print(f"Error moving agent: {e}")
-                return jsonify({'response': ollama_response + f"\n\nFailed to move agent: {e}"})
-
-        return jsonify({'response': ollama_response})
+        except Exception as e:
+            print(f"Error calling LLM: {e}")
+            return jsonify({'response': f"There was an error processing your request with the language model: {str(e)}"})
 
     except Exception as e:
         print(f"ERROR in chat route: {e}")
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
-
 
 @app.route("/logs")
 def get_logs():

@@ -1,5 +1,6 @@
 lmm is to slow for path finding - when dojg a jammed enviornment mission, have a path funding alorigthm to do low level manuevers but also allow llm injection, the llm is a massiv permoance bottleneck for path finding.
 
+
 have lmm choose what movement functikns and what pathfinding functions to run, or given data give new coordinates.
 
 
@@ -77,3 +78,7 @@ below are my current sim, chatapp, rag store, html, and javascript nad a refernc
 
 
 I am currently trying to integrate user to llm to function call in my agent simulation. I currently have the follwoing code and get the following results. I ultimately want to be able to have the user send a message to the llm and have the llm make a function call to move an agent to a coordinate.
+
+
+
+log output from the following conversation. I still don't see the agent on the plot being updated to move across a linear path to the destination and not resume its routine until landing on the desination. Overall the plot is not being managed properly regarding the logs. make sure the agent moves on the plot first before adding to any logs, and can you make a point on the plot for a waypoint when a user makes the agent move to that waypoint? then take that waypoint off the plot when the agent reaches it. overall what if the functionality was changed so that the llm calls a function to plot a waypoint for the agent in order recieved from user, then the python sim takes care of if there are way points, then take the agents current position and make a linear path to the first waypoint. then have the agent follow the linear path to the waypoint before resuming routine.

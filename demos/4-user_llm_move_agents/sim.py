@@ -82,14 +82,11 @@ def update_plot(frame=None):
     ax.set_title('Manual Agent Control Simulation')
     ax.grid(True)
 
-    # Debug: Print simulation_controller.swarm_pos_dict to verify agent positions
-    print("[DEBUG] simulation_controller.swarm_pos_dict:", simulation_controller.swarm_pos_dict)
-
     for agent_id, positions in simulation_controller.swarm_pos_dict.items():
         if not positions:
             continue
 
-        # Plot path history (no label to avoid legend clutter)
+        # Plot path history
         x_history = [p[0] for p in positions]
         y_history = [p[1] for p in positions]
         ax.plot(x_history, y_history, 'b-', alpha=0.5)
@@ -98,6 +95,11 @@ def update_plot(frame=None):
         latest_position = positions[-1]
         scatter = ax.scatter(latest_position[0], latest_position[1], color='green', s=100)
 
+        # Plot waypoints
+        if agent_id in simulation_controller.agent_waypoints:
+            for waypoint in simulation_controller.agent_waypoints[agent_id]:
+                ax.scatter(waypoint[0], waypoint[1], color='orange', s=80, marker='o')
+
         # Annotate agent ID
         ax.annotate(agent_id, (latest_position[0], latest_position[1]),
                     fontsize=8, ha='center', va='bottom')
@@ -105,9 +107,6 @@ def update_plot(frame=None):
         # Collect legend handles and labels
         handles.append(scatter)
         labels.append(f"{agent_id}")
-
-        # Log agent movement
-        add_log(f"Agent {agent_id} moved to {latest_position}", metadata={"jammed": True, "agent_id": agent_id})
 
     # Prevent duplicate legends
     if ax.get_legend():

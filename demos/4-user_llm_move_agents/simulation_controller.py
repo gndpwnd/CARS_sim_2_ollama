@@ -14,15 +14,19 @@ num_agents = 1
 max_movement_per_step = np.sqrt((x_range[1] - x_range[0])**2 + (y_range[1] - y_range[0])**2) / 20
 MAX_POSITIONS = 10  # Maximum number of positions to keep in swarm_pos_dict for each agent
 UPDATE_FREQ = 3  # Frequency of updates in seconds
+AGENT_CLOSE_TO_WAYPOINT_THRESHOLD = 0.2  # Threshold for considering an agent close to a waypoint
 
 # State management
 swarm_pos_dict = {}
 position_history = {}
+agent_waypoints = {}  # Dictionary to store {agent_id: [(x1, y1), (x2, y2), ...]}
 simulation_active = False
 simulation_thread = None
 
-# Track user-assigned targets
-agent_targets = {}  # Dictionary to store user-assigned targets {agent_id: (target_x, target_y)}
+# Path planning & targeting
+agent_targets = {}  # Dictionary to store {agent_id: (target_x, target_y)}
+agent_paths = {}    # Dictionary to store {agent_id: [(x1,y1), (x2,y2), ...]} - waypoints along path
+agent_modes = {}    # Dictionary to store {agent_id: "random" or "user_directed"}
 
 def round_coord(value):
     """Round coordinates to 3 decimal places"""
@@ -131,44 +135,76 @@ def log_agent_data(agent_id, position, metadata=None):
     add_log(log_text=log_text, metadata=log_metadata)
     print(f"[LOGGING] Logged data for agent {agent_id} at {position}")
 
-def is_close_to_target(position, target, threshold=0.5):
-    """Check if position is close to target within threshold"""
+def is_close_to_target(position, target, threshold=AGENT_CLOSE_TO_WAYPOINT_THRESHOLD):
+    """Check if position is close to the target within the given threshold."""
     pos_np = np.array(position)
     target_np = np.array(target)
     distance = np.linalg.norm(pos_np - target_np)
     return distance <= threshold
 
+def generate_path(start_pos, target_pos, steps=10):
+    """Generate a linear path from start to target with specified number of steps."""
+    start_np = np.array(start_pos)
+    target_np = np.array(target_pos)
+    
+    # Calculate the total distance
+    total_distance = np.linalg.norm(target_np - start_np)
+    
+    # Calculate how many steps we need based on max_movement_per_step
+    num_steps = max(1, int(total_distance / max_movement_per_step))
+    
+    # Generate path points
+    path = []
+    for i in range(num_steps + 1):
+        # Linear interpolation: start + i/steps * (target - start)
+        t = i / num_steps
+        point = start_np + t * (target_np - start_np)
+        path.append((round_coord(point[0]), round_coord(point[1])))
+    
+    return path
+
 def update_simulation():
     """Periodically update the simulation and log agent positions."""
-    global simulation_active, agent_targets
+    global simulation_active, agent_targets, agent_paths, agent_modes, agent_waypoints
 
     while simulation_active:
         for agent_id, positions in swarm_pos_dict.items():
             # Get the current position (most recent)
             current_pos = positions[-1][:2]
-            
-            # Check if the agent has a user-assigned target
-            if agent_id in agent_targets:
-                # Move towards user-assigned target
-                target_pos = agent_targets[agent_id]
-                
-                # Calculate the limited movement position
-                new_pos = limit_movement(current_pos, target_pos)
-                
-                # Check if we've reached the target (within threshold)
-                if is_close_to_target(new_pos, target_pos):
-                    # Target reached, remove it from agent_targets
-                    del agent_targets[agent_id]
-                    add_log(f"Agent {agent_id} has reached target {target_pos}", 
-                            metadata={"agent_id": agent_id, "action": "target_reached"})
-                    print(f"[DEBUG] Agent {agent_id} reached target {target_pos}")
+
+            # Check if the agent has waypoints
+            if agent_id in agent_waypoints and agent_waypoints[agent_id]:
+                # Get the next waypoint
+                target_pos = agent_waypoints[agent_id][0]
+
+                # Generate a path if not already done
+                if agent_id not in agent_paths or not agent_paths[agent_id]:
+                    agent_paths[agent_id] = generate_path(current_pos, target_pos)
+
+                # Follow the path
+                if agent_paths[agent_id]:
+                    next_waypoint = agent_paths[agent_id][0]
+
+                    # Check if the agent is close to the next waypoint
+                    if is_close_to_target(current_pos, next_waypoint):
+                        agent_paths[agent_id].pop(0)  # Remove the waypoint from the path
+
+                        # If the path is empty, the agent has reached the target
+                        if not agent_paths[agent_id]:
+                            print(f"[DEBUG] Agent {agent_id} reached waypoint {target_pos}")
+                            agent_waypoints[agent_id].pop(0)  # Remove the waypoint from the queue
+                            continue  # Skip to the next agent
+
+                    # Move toward the next waypoint
+                    new_pos = limit_movement(current_pos, next_waypoint)
+                else:
+                    # If no path, move directly to the target
+                    new_pos = limit_movement(current_pos, target_pos)
             else:
-                # No user target, generate a random movement
+                # Random movement mode
                 target_x = round_coord(random.uniform(x_range[0], x_range[1]))
                 target_y = round_coord(random.uniform(y_range[0], y_range[1]))
                 target_pos = (target_x, target_y)
-                
-                # Calculate the limited movement position
                 new_pos = limit_movement(current_pos, target_pos)
 
             # Update agent position in swarm_pos_dict
@@ -184,8 +220,8 @@ def update_simulation():
             # Log the movement
             log_agent_data(agent_id, new_pos, {
                 'action': 'move',
-                'target': target_pos,
-                'source': 'simulation' if agent_id not in agent_targets else 'user_command'
+                'mode': 'user_directed' if agent_id in agent_waypoints and agent_waypoints[agent_id] else 'random',
+                'source': 'simulation'
             })
 
         print(f"[DEBUG] Updated swarm_pos_dict: {convert_numpy_coords(swarm_pos_dict)}")
@@ -240,11 +276,12 @@ def parse_agent_id(agent_id):
 
 def initialize_agents(log=True):
     """Initialize agent positions and states"""
-    global swarm_pos_dict, position_history
+    global swarm_pos_dict, position_history, agent_modes
 
     # Clear existing state
     swarm_pos_dict = {}
     position_history = {}
+    agent_modes = {}
 
     for i in range(1, num_agents + 1):
         agent_id = f"agent{i}"
@@ -254,6 +291,7 @@ def initialize_agents(log=True):
         # Initialize position
         swarm_pos_dict[agent_id] = [[start_x, start_y]]
         position_history[agent_id] = [(start_x, start_y)]
+        agent_modes[agent_id] = "random"  # Start in random mode
 
         # Log initial position if logging is enabled
         if log:
@@ -287,6 +325,8 @@ def start_simulation(log=True):
 
 def move_agent(agent_id, target_x, target_y):
     """Move the specified agent towards the target coordinates."""
+    global agent_targets, agent_paths, agent_modes
+    
     # Parse the agent ID to handle different formats
     agent_id_str = parse_agent_id(agent_id)
     
@@ -309,11 +349,16 @@ def move_agent(agent_id, target_x, target_y):
     target_y = max(min(float(target_y), y_range[1]), y_range[0])
     target_pos = (target_x, target_y)
     
-    # Save the target for continuous movement in the update loop
-    agent_targets[agent_id_str] = target_pos
+    # Generate a path to the target
+    path = generate_path(current_pos, target_pos)
     
-    # Calculate the limited movement position for immediate update
-    new_pos = limit_movement(current_pos, target_pos)
+    # Save the target and path
+    agent_targets[agent_id_str] = target_pos
+    agent_paths[agent_id_str] = path[1:]  # Skip the first point which is the current position
+    agent_modes[agent_id_str] = "user_directed"  # Set to user-directed mode
+    
+    # Calculate the first step (this will be within max_movement_per_step)
+    new_pos = limit_movement(current_pos, target_pos) if not agent_paths[agent_id_str] else agent_paths[agent_id_str][0]
     
     # Update agent position
     swarm_pos_dict[agent_id_str].append([new_pos[0], new_pos[1]])
@@ -323,17 +368,23 @@ def move_agent(agent_id, target_x, target_y):
     log_agent_data(agent_id_str, new_pos, {
         'action': 'move',
         'target': target_pos,
+        'mode': 'user_directed',
         'source': 'user_command'
     })
     
+    # Calculate total path length and remaining waypoints
+    remaining_waypoints = len(agent_paths[agent_id_str])
+    estimated_steps_to_target = remaining_waypoints
+    
     print(f"[DEBUG] Agent {agent_id_str} moved to {new_pos}")
-    # Calculate remaining distance to target
-    distance_to_target = np.linalg.norm(np.array(new_pos) - np.array(target_pos))
+    print(f"[DEBUG] Path generated with {remaining_waypoints} waypoints")
     
     return {
         "success": True,
-        "message": f"Agent {agent_id_str} moved from {current_pos} towards {target_pos}. New position: {new_pos}. Distance to target: {round(distance_to_target, 3)}",
-        "position": new_pos
+        "message": f"Agent {agent_id_str} moved from {current_pos} towards {target_pos}. New position: {new_pos}. "
+                   f"Estimated steps to target: {estimated_steps_to_target}.",
+        "position": new_pos,
+        "path_length": remaining_waypoints + 1
     }
 
 def stop_simulation():
@@ -348,12 +399,15 @@ def get_agent_positions():
     """Get current positions of all agents"""
     positions_dict = {agent_id: positions[-1][:2] for agent_id, positions in swarm_pos_dict.items()}
     
-    # Add information about user-assigned targets
-    for agent_id, target in agent_targets.items():
-        if agent_id in positions_dict:
+    # Add information about user-assigned targets and modes
+    for agent_id, pos in positions_dict.items():
+        mode = agent_modes.get(agent_id, "random")
+        if mode == "user_directed" and agent_id in agent_targets:
+            target = agent_targets[agent_id]
+            remaining_waypoints = len(agent_paths.get(agent_id, []))
             positions_dict[agent_id] = (
-                positions_dict[agent_id], 
-                f"Moving to target {target}"
+                pos, 
+                f"Moving to {target} ({remaining_waypoints} steps remaining)"
             )
     
     return positions_dict
@@ -376,3 +430,15 @@ def check_simulation_status():
     else:
         # Already running
         return "Simulation is running with agents: " + ", ".join(swarm_pos_dict.keys())
+    
+def add_waypoint(agent_id, target_x, target_y):
+    """Add a waypoint for the specified agent."""
+    global agent_waypoints
+
+    agent_id_str = parse_agent_id(agent_id)
+    if agent_id_str not in agent_waypoints:
+        agent_waypoints[agent_id_str] = []
+
+    # Add the waypoint to the queue
+    agent_waypoints[agent_id_str].append((target_x, target_y))
+    print(f"[DEBUG] Added waypoint for {agent_id_str}: ({target_x}, {target_y})")
