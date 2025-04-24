@@ -10,11 +10,8 @@ from rag_store import retrieve_relevant
 
 # Import simulation functions
 from simulation_controller import (
-    move_agent, 
     check_simulation_status, 
     swarm_pos_dict,
-    initialize_agents,
-    start_simulation,
     get_agent_positions
 )
 
@@ -220,6 +217,34 @@ Respond directly to the user's query based on the simulation state. If they ask 
                 messages=[{"role": "system", "content": prompt}],
                 tools=tools
             )
+
+            # Check if the response includes a tool call
+            if 'tool_calls' in response.get('message', {}) and response['message']['tool_calls']:
+                for tool_call in response['message']['tool_calls']:
+                    if tool_call['function']['name'] == 'add_waypoint':
+                        try:
+                            args = json.loads(tool_call['function']['arguments'])
+                            agent_id = args.get('agent_id')
+                            target_x = args.get('target_x')
+                            target_y = args.get('target_y')
+                            
+                            # Add the waypoint for the agent
+                            from simulation_controller import add_waypoint
+                            success = add_waypoint(agent_id, target_x, target_y)
+                            
+                            # Add a waypoint success message to the LLM's response content
+                            waypoint_msg = f"\n\nWaypoint ({target_x}, {target_y}) added for {agent_id}. The agent will move to this waypoint."
+                            if response['message']['content']:
+                                response['message']['content'] += waypoint_msg
+                            else:
+                                response['message']['content'] = waypoint_msg
+                        except Exception as e:
+                            print(f"Error processing add_waypoint tool call: {e}")
+                            if response['message']['content']:
+                                response['message']['content'] += f"\n\nError adding waypoint: {str(e)}"
+                            else:
+                                response['message']['content'] = f"Error adding waypoint: {str(e)}"
+                
             return jsonify({'response': response.get('message', {}).get('content', "Sorry, I didn't understand that.")})
 
         except Exception as e:

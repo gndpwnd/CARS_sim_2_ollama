@@ -17,7 +17,8 @@ from simulation_controller import (
     stop_simulation, 
     x_range,
     y_range,
-    start_simulation
+    start_simulation,
+    add_waypoint
 )
 
 # Animation control
@@ -49,6 +50,22 @@ def stop_simulation_button(event):
     plt.close('all')  # Close all figures
     print("Simulation stopped")
 
+# New button callback for sending agent1 to (5, 5)
+def move_agent1_to_test_point(event):
+    """Callback for move agent1 button"""
+    # Target coordinates
+    target_x, target_y = 5.0, 5.0
+    
+    # Add waypoint for agent1
+    success = add_waypoint("agent1", target_x, target_y)
+    
+    if success:
+        add_log(f"Set waypoint for agent1 to ({target_x}, {target_y})", 
+                metadata={"action": "test_waypoint"})
+        print(f"Added waypoint for agent1 to ({target_x}, {target_y})")
+    else:
+        print("Failed to add waypoint for agent1")
+
 # Plotting setup
 def init_plot():
     """Initialize the plot for animation"""
@@ -69,6 +86,10 @@ def update_plot(frame=None):
     if not animation_running:
         return []
 
+    # Add debug prints
+    print(f"[PLOT DEBUG] agent_waypoints: {simulation_controller.agent_waypoints}")
+    print(f"[PLOT DEBUG] agent_full_paths: {simulation_controller.agent_full_paths}")
+    
     handles = []
     labels = []
     
@@ -89,16 +110,28 @@ def update_plot(frame=None):
         # Plot path history
         x_history = [p[0] for p in positions]
         y_history = [p[1] for p in positions]
-        ax.plot(x_history, y_history, 'b-', alpha=0.5)
+        ax.plot(x_history, y_history, 'b-', alpha=0.5, label=f"{agent_id} Path History")
 
         # Plot current position
         latest_position = positions[-1]
         scatter = ax.scatter(latest_position[0], latest_position[1], color='green', s=100)
 
-        # Plot waypoints
+        # Plot waypoints - don't remove them here
         if agent_id in simulation_controller.agent_waypoints:
-            for waypoint in simulation_controller.agent_waypoints[agent_id]:
+            waypoints = simulation_controller.agent_waypoints[agent_id]
+            for i, waypoint in enumerate(waypoints):
                 ax.scatter(waypoint[0], waypoint[1], color='orange', s=80, marker='o')
+                ax.annotate(f"{agent_id} W{i+1}", (waypoint[0], waypoint[1]),
+                            fontsize=8, ha='center', va='bottom')
+
+        # Plot the full linear path (use full path, not remaining path)
+        if agent_id in simulation_controller.agent_full_paths:
+            full_path = simulation_controller.agent_full_paths[agent_id]
+            if full_path:  # Check if path is not empty
+                path_x = [p[0] for p in full_path]
+                path_y = [p[1] for p in full_path]
+                ax.plot(path_x, path_y, 'r--', alpha=0.7, label=f"{agent_id} Linear Path")
+                print(f"[PLOT DEBUG] Plotting path with {len(full_path)} points: {full_path}")
 
         # Annotate agent ID
         ax.annotate(agent_id, (latest_position[0], latest_position[1]),
@@ -116,6 +149,9 @@ def update_plot(frame=None):
     if handles:
         ax.legend(handles, labels, loc='upper left')
 
+    # Force redraw to ensure all elements are displayed
+    plt.draw()
+    
     return []
 
 def run_simulation_with_plots():
@@ -131,7 +167,7 @@ def run_simulation_with_plots():
     button_height = 0.05
     button_bottom = 0.02
     button_spacing = 0.05
-    button_start_left = 0.5 - (3*button_width + 2*button_spacing)/2
+    button_start_left = 0.5 - (4*button_width + 3*button_spacing)/2  # Adjusted for 4 buttons
 
     # Create button axes
     pause_ax = plt.axes([button_start_left, button_bottom, button_width, button_height])
@@ -139,16 +175,21 @@ def run_simulation_with_plots():
                             button_bottom, button_width, button_height])
     stop_ax = plt.axes([button_start_left + 2*button_width + 2*button_spacing, 
                         button_bottom, button_width, button_height])
+    # New button for moving agent1 to (5, 5)
+    move_agent1_ax = plt.axes([button_start_left + 3*button_width + 3*button_spacing, 
+                             button_bottom, button_width, button_height])
 
     # Create buttons with distinctive colors
     pause_button = Button(pause_ax, 'Pause', color='lightgoldenrodyellow')
     continue_button = Button(continue_ax, 'Continue', color='lightblue')
     stop_button = Button(stop_ax, 'Stop', color='salmon')
+    move_agent1_button = Button(move_agent1_ax, 'Move Agent1', color='lightgreen')  # New button
 
     # Connect button events to callbacks
     pause_button.on_clicked(pause_simulation)
     continue_button.on_clicked(continue_simulation)
     stop_button.on_clicked(stop_simulation_button)
+    move_agent1_button.on_clicked(move_agent1_to_test_point)  # Connect new button
 
     # Add title
     fig.suptitle("Manual Agent Control Simulation", fontsize=16)

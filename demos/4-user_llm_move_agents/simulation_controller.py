@@ -26,6 +26,7 @@ simulation_thread = None
 # Path planning & targeting
 agent_targets = {}  # Dictionary to store {agent_id: (target_x, target_y)}
 agent_paths = {}    # Dictionary to store {agent_id: [(x1,y1), (x2,y2), ...]} - waypoints along path
+agent_full_paths = {}  # new: track full path for plotting
 agent_modes = {}    # Dictionary to store {agent_id: "random" or "user_directed"}
 
 def round_coord(value):
@@ -142,8 +143,8 @@ def is_close_to_target(position, target, threshold=AGENT_CLOSE_TO_WAYPOINT_THRES
     distance = np.linalg.norm(pos_np - target_np)
     return distance <= threshold
 
-def generate_path(start_pos, target_pos, steps=10):
-    """Generate a linear path from start to target with specified number of steps."""
+def generate_linear_path(start_pos, target_pos):
+    """Generate a linear path from start to target using steps based on max_movement_per_step."""
     start_np = np.array(start_pos)
     target_np = np.array(target_pos)
     
@@ -155,57 +156,71 @@ def generate_path(start_pos, target_pos, steps=10):
     
     # Generate path points
     path = []
-    for i in range(num_steps + 1):
-        # Linear interpolation: start + i/steps * (target - start)
+    for i in range(1, num_steps + 1):  # Start from 1 to exclude the starting position
         t = i / num_steps
         point = start_np + t * (target_np - start_np)
         path.append((round_coord(point[0]), round_coord(point[1])))
     
+    print(f"[DEBUG] Generated linear path: {path}")
     return path
 
 def update_simulation():
     """Periodically update the simulation and log agent positions."""
-    global simulation_active, agent_targets, agent_paths, agent_modes, agent_waypoints
+    global simulation_active, agent_targets, agent_paths, agent_modes, agent_waypoints, agent_full_paths
 
     while simulation_active:
         for agent_id, positions in swarm_pos_dict.items():
             # Get the current position (most recent)
             current_pos = positions[-1][:2]
+            new_pos = None  # We'll set this based on movement logic
 
-            # Check if the agent has waypoints
-            if agent_id in agent_waypoints and agent_waypoints[agent_id]:
-                # Get the next waypoint
-                target_pos = agent_waypoints[agent_id][0]
+            # Check if the agent has a path to follow
+            if agent_id in agent_paths and agent_paths[agent_id]:
+                # Follow the next point in the path
+                next_point = agent_paths[agent_id].pop(0)
+                new_pos = next_point
+                agent_modes[agent_id] = "user_directed"  # Ensure mode is set to user-directed
+                print(f"[DEBUG] Following path: Agent {agent_id} moving from {current_pos} to {new_pos}")
 
-                # Generate a path if not already done
-                if agent_id not in agent_paths or not agent_paths[agent_id]:
-                    agent_paths[agent_id] = generate_path(current_pos, target_pos)
+                # If the path is now empty, switch to random movement
+                if not agent_paths[agent_id]:
+                    print(f"[DEBUG] Agent {agent_id} completed its path")
+                    
+                    # Check if agent has reached waypoint
+                    if agent_id in agent_waypoints and agent_waypoints[agent_id]:
+                        current_waypoint = agent_waypoints[agent_id][0]
+                        if is_close_to_target(new_pos, current_waypoint):
+                            print(f"[DEBUG] Agent {agent_id} reached waypoint {current_waypoint}")
+                            # Remove the reached waypoint
+                            agent_waypoints[agent_id].pop(0)
+                            
+                            # Clear the full path since waypoint is reached
+                            if agent_id in agent_full_paths:
+                                agent_full_paths[agent_id] = []
+                                print(f"[DEBUG] Cleared full path for agent {agent_id} after reaching waypoint")
+                    
+                    agent_modes[agent_id] = "random"
 
-                # Follow the path
+            # If no path, check for waypoints
+            elif agent_id in agent_waypoints and agent_waypoints[agent_id]:
+                if not agent_paths.get(agent_id):
+                    target_pos = agent_waypoints[agent_id][0]
+                    agent_paths[agent_id] = generate_linear_path(current_pos, target_pos)
+                    agent_full_paths[agent_id] = agent_paths[agent_id].copy()
+                    print(f"[DEBUG] Generated new path for agent {agent_id} with {len(agent_paths[agent_id])} points")
+
                 if agent_paths[agent_id]:
-                    next_waypoint = agent_paths[agent_id][0]
+                    next_point = agent_paths[agent_id].pop(0)
+                    new_pos = next_point
 
-                    # Check if the agent is close to the next waypoint
-                    if is_close_to_target(current_pos, next_waypoint):
-                        agent_paths[agent_id].pop(0)  # Remove the waypoint from the path
-
-                        # If the path is empty, the agent has reached the target
-                        if not agent_paths[agent_id]:
-                            print(f"[DEBUG] Agent {agent_id} reached waypoint {target_pos}")
-                            agent_waypoints[agent_id].pop(0)  # Remove the waypoint from the queue
-                            continue  # Skip to the next agent
-
-                    # Move toward the next waypoint
-                    new_pos = limit_movement(current_pos, next_waypoint)
-                else:
-                    # If no path, move directly to the target
-                    new_pos = limit_movement(current_pos, target_pos)
-            else:
-                # Random movement mode
+            # If no waypoints or paths, use random movement
+            if new_pos is None:
+                agent_modes[agent_id] = "random"
                 target_x = round_coord(random.uniform(x_range[0], x_range[1]))
                 target_y = round_coord(random.uniform(y_range[0], y_range[1]))
-                target_pos = (target_x, target_y)
-                new_pos = limit_movement(current_pos, target_pos)
+                random_target = (target_x, target_y)
+                new_pos = limit_movement(current_pos, random_target)
+                print(f"[DEBUG] Random move for agent {agent_id} from {current_pos} to {new_pos}")
 
             # Update agent position in swarm_pos_dict
             swarm_pos_dict[agent_id].append([new_pos[0], new_pos[1]])
@@ -220,13 +235,12 @@ def update_simulation():
             # Log the movement
             log_agent_data(agent_id, new_pos, {
                 'action': 'move',
-                'mode': 'user_directed' if agent_id in agent_waypoints and agent_waypoints[agent_id] else 'random',
+                'mode': agent_modes[agent_id],
                 'source': 'simulation'
             })
 
         print(f"[DEBUG] Updated swarm_pos_dict: {convert_numpy_coords(swarm_pos_dict)}")
         time.sleep(UPDATE_FREQ)
-
 
 def limit_movement(current_pos, target_pos):
     """Limit movement to max_movement_per_step"""
@@ -350,7 +364,7 @@ def move_agent(agent_id, target_x, target_y):
     target_pos = (target_x, target_y)
     
     # Generate a path to the target
-    path = generate_path(current_pos, target_pos)
+    path = generate_linear_path(current_pos, target_pos)
     
     # Save the target and path
     agent_targets[agent_id_str] = target_pos
@@ -432,13 +446,62 @@ def check_simulation_status():
         return "Simulation is running with agents: " + ", ".join(swarm_pos_dict.keys())
     
 def add_waypoint(agent_id, target_x, target_y):
-    """Add a waypoint for the specified agent."""
-    global agent_waypoints
-
+    """
+    Add a waypoint for the specified agent.
+    The agent will move to this waypoint in a linear path.
+    """
+    global agent_waypoints, agent_paths, agent_full_paths
+    
+    # Parse the agent ID to handle different formats
     agent_id_str = parse_agent_id(agent_id)
+    
+    # Check if agent exists
+    if agent_id_str not in swarm_pos_dict:
+        print(f"[ERROR] Cannot add waypoint - Agent {agent_id_str} does not exist")
+        return False
+    
+    # Ensure target is within bounds
+    target_x = max(min(float(target_x), x_range[1]), x_range[0])
+    target_y = max(min(float(target_y), y_range[1]), y_range[0])
+    target_pos = (target_x, target_y)
+    
+    # Initialize waypoints list if not exists
     if agent_id_str not in agent_waypoints:
         agent_waypoints[agent_id_str] = []
-
+    
     # Add the waypoint to the queue
     agent_waypoints[agent_id_str].append((target_x, target_y))
+    
+    # Generate a linear path from current position to waypoint
+    current_pos = swarm_pos_dict[agent_id_str][-1][:2]
+    linear_path = generate_linear_path(current_pos, target_pos)
+    
+    # Save the path
+    agent_paths[agent_id_str] = linear_path
+    agent_full_paths[agent_id_str] = linear_path.copy()
+    
+    # Set the agent mode to user_directed
+    agent_modes[agent_id_str] = "user_directed"
+    
+    # Log the addition of a waypoint
+    log_agent_data(agent_id_str, current_pos, {
+        'action': 'waypoint_added',
+        'waypoint': target_pos,
+        'source': 'user_command'
+    })
+    
     print(f"[DEBUG] Added waypoint for {agent_id_str}: ({target_x}, {target_y})")
+    print(f"[DEBUG] Generated linear path with {len(linear_path)} points")
+    return True
+
+def print_waypoints_status():
+    """Print the current status of all waypoints for debugging."""
+    print("\n=== WAYPOINTS STATUS ===")
+    for agent_id, waypoints in agent_waypoints.items():
+        if waypoints:
+            current_pos = swarm_pos_dict[agent_id][-1][:2] if agent_id in swarm_pos_dict else "Unknown"
+            distance = np.linalg.norm(np.array(current_pos) - np.array(waypoints[0])) if current_pos != "Unknown" else "Unknown"
+            print(f"Agent {agent_id}: Current pos {current_pos}, Waypoint {waypoints[0]}, Distance {distance:.2f}")
+        else:
+            print(f"Agent {agent_id}: No waypoints")
+    print("========================\n")
