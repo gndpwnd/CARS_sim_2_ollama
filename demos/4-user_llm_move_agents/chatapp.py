@@ -11,8 +11,8 @@ from rag_store import retrieve_relevant
 # Import simulation functions
 from simulation_controller import (
     check_simulation_status, 
-    swarm_pos_dict,
-    get_agent_positions
+    get_agent_positions,
+    add_waypoint
 )
 
 from llm_config import get_ollama_client, get_model_name
@@ -141,6 +141,39 @@ def parse_move_command(user_message):
     
     return None
 
+def execute_tool_call(tool_call):
+    """
+    Execute a tool call from the LLM and return the result
+    """
+    function_name = tool_call['function']['name']
+    arguments = json.loads(tool_call['function']['arguments'])
+    
+    if function_name == 'add_waypoint':
+        agent_id = arguments.get('agent_id')
+        target_x = float(arguments.get('target_x', 0))
+        target_y = float(arguments.get('target_y', 0))
+        
+        # Make sure agent_id has the correct format
+        if agent_id and not agent_id.startswith('agent') and agent_id.isdigit():
+            agent_id = f"agent{agent_id}"
+        
+        print(f"[DEBUG] Executing add_waypoint with {agent_id}, {target_x}, {target_y}")
+        success = add_waypoint(agent_id, target_x, target_y)
+        
+        if success:
+            return f"Waypoint ({target_x}, {target_y}) added for {agent_id}. The agent will move to this waypoint."
+        else:
+            return f"Failed to add waypoint for {agent_id}. Please check if the agent exists."
+            
+    elif function_name == 'get_agent_positions':
+        positions = get_agent_positions()
+        positions_text = "\n".join(
+            f"Agent {agent_id} is currently at position {pos}" for agent_id, pos in positions.items()
+        )
+        return f"Current agent positions:\n{positions_text}"
+    
+    return f"Unknown tool call: {function_name}"
+
 @app.route('/chat', methods=['POST'])
 def chat():
     try:
@@ -155,28 +188,20 @@ def chat():
             print(f"[DEBUG] Direct parse of move command: {agent_id} to ({target_x}, {target_y})")
             try:
                 # Add the waypoint for the agent
-                from simulation_controller import add_waypoint
-                add_waypoint(agent_id, target_x, target_y)
-                return jsonify({
-                    'response': f"Waypoint ({target_x}, {target_y}) added for {agent_id}. The agent will move to this waypoint."
-                })
+                success = add_waypoint(agent_id, target_x, target_y)
+                if success:
+                    return jsonify({
+                        'response': f"Waypoint ({target_x}, {target_y}) added for {agent_id}. The agent will move to this waypoint."
+                    })
+                else:
+                    return jsonify({
+                        'response': f"Failed to add waypoint for {agent_id}. Please check if the agent exists."
+                    })
             except Exception as e:
                 print(f"Error adding waypoint: {e}")
                 return jsonify({'response': f"Failed to add waypoint: {e}"})
 
-        # Check if the user wants to retrieve agent positions
-        if "agent positions" in user_message.lower() or "current positions" in user_message.lower():
-            try:
-                positions = get_agent_positions()
-                positions_text = "\n".join(
-                    f"Agent {agent_id} is currently at position {pos}" for agent_id, pos in positions.items()
-                )
-                return jsonify({'response': f"Current agent positions:\n{positions_text}"})
-            except Exception as e:
-                print(f"Error retrieving agent positions: {e}")
-                return jsonify({'response': f"Failed to retrieve agent positions: {e}"})
-
-        # If not a direct move command or position request, use the LLM for other queries
+        # If not a direct move command, use the LLM
         try:
             # Fetch relevant logs and context for the LLM
             logs = retrieve_relevant(user_message, k=NUM_LOGS_FOR_LLM)
@@ -195,7 +220,7 @@ def chat():
                 f"Agent {agent_id} is currently at position {pos}" for agent_id, pos in current_positions.items()
             )
 
-            # Create a prompt for the LLM
+            # Create a prompt for the LLM with explicit instructions about function calling
             prompt = f"""
 You are an assistant for a Multi-Agent Simulation system. Users can ask you about the current state of the simulation 
 and request you to add waypoints for agents. The simulation will handle moving agents to their waypoints.
@@ -208,47 +233,53 @@ RECENT LOG HISTORY:
 
 USER QUERY: {user_message}
 
-Respond directly to the user's query based on the simulation state. If they ask to move an agent, add a waypoint for the agent.
+IMPORTANT INSTRUCTIONS FOR FUNCTION CALLING:
+- If the user wants to move an agent or add a waypoint, ALWAYS use the add_waypoint function
+- The add_waypoint function takes agent_id (string), target_x (number), and target_y (number)
+- If the agent ID is a number, format it as "agent{number}" (e.g., "agent1")
+- Coordinates must be between -10 and 10 for both x and y
+
+Respond directly to the user's query based on the simulation state. If they ask to move an agent, ALWAYS use the add_waypoint function call.
 """
 
-            # Call the LLM
+            # Call the LLM with tools enabled
             response = ollama.chat(
                 model=LLM_MODEL,
                 messages=[{"role": "system", "content": prompt}],
                 tools=tools
             )
 
-            # Check if the response includes a tool call
-            if 'tool_calls' in response.get('message', {}) and response['message']['tool_calls']:
-                for tool_call in response['message']['tool_calls']:
-                    if tool_call['function']['name'] == 'add_waypoint':
-                        try:
-                            args = json.loads(tool_call['function']['arguments'])
-                            agent_id = args.get('agent_id')
-                            target_x = args.get('target_x')
-                            target_y = args.get('target_y')
-                            
-                            # Add the waypoint for the agent
-                            from simulation_controller import add_waypoint
-                            success = add_waypoint(agent_id, target_x, target_y)
-                            
-                            # Add a waypoint success message to the LLM's response content
-                            waypoint_msg = f"\n\nWaypoint ({target_x}, {target_y}) added for {agent_id}. The agent will move to this waypoint."
-                            if response['message']['content']:
-                                response['message']['content'] += waypoint_msg
-                            else:
-                                response['message']['content'] = waypoint_msg
-                        except Exception as e:
-                            print(f"Error processing add_waypoint tool call: {e}")
-                            if response['message']['content']:
-                                response['message']['content'] += f"\n\nError adding waypoint: {str(e)}"
-                            else:
-                                response['message']['content'] = f"Error adding waypoint: {str(e)}"
+            # Process the LLM response
+            response_content = response.get('message', {}).get('content', '')
+            tool_calls = response.get('message', {}).get('tool_calls', [])
+            
+            # Execute any tool calls
+            tool_call_results = []
+            for tool_call in tool_calls:
+                try:
+                    result = execute_tool_call(tool_call)
+                    tool_call_results.append(result)
+                except Exception as e:
+                    print(f"Error executing tool call: {e}")
+                    tool_call_results.append(f"Error: {str(e)}")
+            
+            # Combine LLM response with tool call results
+            final_response = response_content
+            if tool_call_results:
+                if final_response:
+                    final_response += "\n\n" + "\n".join(tool_call_results)
+                else:
+                    final_response = "\n".join(tool_call_results)
+                    
+            # If no response and no tool calls, provide a fallback
+            if not final_response:
+                final_response = "I couldn't understand your request. Please try rephrasing or use more specific instructions."
                 
-            return jsonify({'response': response.get('message', {}).get('content', "Sorry, I didn't understand that.")})
+            return jsonify({'response': final_response})
 
         except Exception as e:
             print(f"Error calling LLM: {e}")
+            traceback.print_exc()
             return jsonify({'response': f"There was an error processing your request with the language model: {str(e)}"})
 
     except Exception as e:
