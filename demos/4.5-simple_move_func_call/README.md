@@ -1,7 +1,7 @@
 Run the mcp server
 
 ```
-fastmcp dev mcp-server.py
+python mcp-server.py
 ```
 
 

@@ -622,8 +622,8 @@ def init_plot():
     ax2.set_xlim(0, 30)
     ax2.set_ylim(0, 1)
     ax2.set_xlabel('Time (s)')
-    ax2.set_ylabel('Communication Quality')
-    ax2.set_title('Communication Quality over Time')
+    ax2.set_ylabel('GPS Quality')
+    ax2.set_title('GPS Quality over Time')
     ax2.grid(True)
     
     return []
@@ -744,8 +744,8 @@ def update_plot(frame):
     ax2.set_xlim(0, max_time)
     ax2.set_ylim(0, 1)
     ax2.set_xlabel('Time (s)')
-    ax2.set_ylabel('Communication Quality')
-    ax2.set_title('Communication Quality over Time')
+    ax2.set_ylabel('GPS Quality')
+    ax2.set_title('GPS Quality over Time')
     ax2.grid(True)
 
     # Track agent data for logging
