@@ -7,6 +7,8 @@ import psycopg2
 import json
 import re
 from rag_store import retrieve_relevant
+from sim import run_simulation_with_plots
+import multiprocessing
 
 # Import simulation functions
 from simulation_controller import (
@@ -120,26 +122,47 @@ def parse_move_command(user_message):
     Manually parse move commands if the LLM doesn't use function calling.
     Returns agent_id, target_x, target_y if successful, None otherwise.
     """
-    # Match patterns like: move agent4 to 5,5 or move agent4 to (5,5)
-    move_pattern = r"move (?:agent)?(\d+) to (?:\()?(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)(?:\))?"
+    print(f"[DEBUG] Attempting to parse move command: {user_message}")
     
-    # Match patterns like: send agent3 to position x=6,y=-7
-    send_pattern = r"send (?:agent)?(\d+) to position x=(-?\d+\.?\d*)[,\s]*y=(-?\d+\.?\d*)"
+    # Direct pattern for "move agent1 to 5,5"
+    direct_pattern = r"move\s+agent(\d+)\s+to\s+(\d+)\s*,\s*(\d+)"
+    match = re.search(direct_pattern, user_message, re.IGNORECASE)
     
-    # Match patterns like: agent2 go to coordinates 4,8
-    go_pattern = r"(?:agent)?(\d+) go to coordinates (?:\()?(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)(?:\))?"
+    if match:
+        agent_num, x_str, y_str = match.groups()
+        agent_id = f"agent{agent_num}"
+        target_x = float(x_str)
+        target_y = float(y_str)
+        print(f"[DEBUG] Parsed command: agent_id={agent_id}, x={target_x}, y={target_y}")
+        return agent_id, target_x, target_y
     
-    # Try each pattern in sequence
-    for pattern in [move_pattern, send_pattern, go_pattern]:
-        match = re.search(pattern, user_message, re.IGNORECASE)
-        if match:
-            agent_num, x_str, y_str = match.groups()
-            agent_id = f"agent{agent_num}"
-            target_x = float(x_str)
-            target_y = float(y_str)
-            return agent_id, target_x, target_y
-    
+    print("[DEBUG] Failed to parse move command")
     return None
+
+def process_waypoint_command(agent_id, target_x, target_y):
+    """
+    Process a waypoint command for an agent, ensuring the same behavior as the button.
+    Returns a response message.
+    """
+    try:
+        # Normalize agent_id format (if only number provided)
+        if isinstance(agent_id, str) and agent_id.isdigit():
+            agent_id = f"agent{agent_id}"
+        
+        # Make sure coordinates are floats
+        target_x = float(target_x)
+        target_y = float(target_y)
+        
+        # Add the waypoint using the same function the button uses
+        success = add_waypoint(agent_id, target_x, target_y)
+        
+        if success:
+            return f"Waypoint ({target_x}, {target_y}) added for {agent_id}. The agent will move to this waypoint."
+        else:
+            return f"Failed to add waypoint for {agent_id}. Please check if the agent exists."
+    except Exception as e:
+        print(f"[ERROR] Error in process_waypoint_command: {e}")
+        return f"Error processing waypoint command: {str(e)}"
 
 def execute_tool_call(tool_call):
     """
@@ -153,17 +176,8 @@ def execute_tool_call(tool_call):
         target_x = float(arguments.get('target_x', 0))
         target_y = float(arguments.get('target_y', 0))
         
-        # Make sure agent_id has the correct format
-        if agent_id and not agent_id.startswith('agent') and agent_id.isdigit():
-            agent_id = f"agent{agent_id}"
-        
-        print(f"[DEBUG] Executing add_waypoint with {agent_id}, {target_x}, {target_y}")
-        success = add_waypoint(agent_id, target_x, target_y)
-        
-        if success:
-            return f"Waypoint ({target_x}, {target_y}) added for {agent_id}. The agent will move to this waypoint."
-        else:
-            return f"Failed to add waypoint for {agent_id}. Please check if the agent exists."
+        # Process the waypoint command using the same function for consistency
+        return process_waypoint_command(agent_id, target_x, target_y)
             
     elif function_name == 'get_agent_positions':
         positions = get_agent_positions()
@@ -181,29 +195,29 @@ def chat():
         if not user_message:
             return jsonify({'error': 'No message provided'}), 400
 
+        # Ensure simulation is active
+        simulation_status = check_simulation_status()
+        print(f"[DEBUG] Simulation status: {simulation_status}")
+
         # Check for a direct move command to handle it as adding a waypoint
         move_command = parse_move_command(user_message)
         if move_command:
             agent_id, target_x, target_y = move_command
             print(f"[DEBUG] Direct parse of move command: {agent_id} to ({target_x}, {target_y})")
-            try:
-                # Add the waypoint for the agent
-                success = add_waypoint(agent_id, target_x, target_y)
-                if success:
-                    return jsonify({
-                        'response': f"Waypoint ({target_x}, {target_y}) added for {agent_id}. The agent will move to this waypoint."
-                    })
-                else:
-                    return jsonify({
-                        'response': f"Failed to add waypoint for {agent_id}. Please check if the agent exists."
-                    })
-            except Exception as e:
-                print(f"Error adding waypoint: {e}")
-                return jsonify({'response': f"Failed to add waypoint: {e}"})
+
+            # Use the process_waypoint_command function for consistent behavior
+            response = process_waypoint_command(agent_id, target_x, target_y)
+            return jsonify({'response': response})
 
         # If not a direct move command, use the LLM
         try:
-            # Fetch relevant logs and context for the LLM
+            # Get the current agent positions for context
+            current_positions = get_agent_positions()
+            positions_text = "\n".join(
+                f"Agent {agent_id} is currently at position {pos}" for agent_id, pos in current_positions.items()
+            )
+            
+            # Fetch relevant logs for context
             logs = retrieve_relevant(user_message, k=NUM_LOGS_FOR_LLM)
             simulation_context = []
             for log in logs:
@@ -215,15 +229,10 @@ def chat():
                 simulation_context.append(entry)
 
             context_text = "\n".join(simulation_context)
-            current_positions = get_agent_positions()
-            positions_text = "\n".join(
-                f"Agent {agent_id} is currently at position {pos}" for agent_id, pos in current_positions.items()
-            )
-
-            # Create a prompt for the LLM with explicit instructions about function calling
+            
+            # Create a clearer prompt with explicit instructions
             prompt = f"""
-You are an assistant for a Multi-Agent Simulation system. Users can ask you about the current state of the simulation 
-and request you to add waypoints for agents. The simulation will handle moving agents to their waypoints.
+You are an assistant for a Multi-Agent Simulation system. Your main role is to help users control agents by adding waypoints.
 
 CURRENT SIMULATION STATE:
 {positions_text}
@@ -233,25 +242,49 @@ RECENT LOG HISTORY:
 
 USER QUERY: {user_message}
 
-IMPORTANT INSTRUCTIONS FOR FUNCTION CALLING:
-- If the user wants to move an agent or add a waypoint, ALWAYS use the add_waypoint function
-- The add_waypoint function takes agent_id (string), target_x (number), and target_y (number)
-- If the agent ID is a number, format it as "agent{number}" (e.g., "agent1")
-- Coordinates must be between -10 and 10 for both x and y
+VERY IMPORTANT INSTRUCTIONS:
+1. If the user wants to move an agent to a specific location, you MUST use the `add_waypoint` function call.
+2. DO NOT respond with text instructions like "I'll move agent1 to (5,5)" - you MUST use the function call.
+3. The `add_waypoint` function requires:
+   - `agent_id`: A string like "agent1" or just "1" (will be converted to "agent1").
+   - `target_x`: The x-coordinate (must be between -10 and 10).
+   - `target_y`: The y-coordinate (must be between -10 and 10).
+4. If the user asks for the current positions of agents, you MUST use the `get_agent_positions` function call.
+5. Always ensure that the behavior of the `add_waypoint` function matches the behavior of the "Move Agent1" button in the Matplotlib plot.
 
-Respond directly to the user's query based on the simulation state. If they ask to move an agent, ALWAYS use the add_waypoint function call.
+EXAMPLES OF WHEN TO USE `add_waypoint`:
+- "Move agent1 to coordinates (5,5)"
+- "Send agent 2 to position (-3,4)"
+- "Place agent3 at x=2, y=-7"
+- "Can you relocate agent 1 to the point (4,4)?"
+
+EXAMPLES OF WHEN TO USE `get_agent_positions`:
+- "Where is agent1 currently?"
+- "What are the positions of all agents?"
+- "Can you tell me where agent2 is?"
+
+Remember:
+- ALWAYS use function calls instead of text-based responses for agent control actions.
+- Ensure the function calls are consistent with the behavior of the simulation's UI buttons.
 """
 
-            # Call the LLM with tools enabled
+            # Call the LLM with tools enabled and force tool usage when appropriate
             response = ollama.chat(
                 model=LLM_MODEL,
-                messages=[{"role": "system", "content": prompt}],
-                tools=tools
+                messages=[
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": user_message}
+                ],
+                tools=tools,
+                tool_choice={"type": "auto"}
             )
 
             # Process the LLM response
             response_content = response.get('message', {}).get('content', '')
             tool_calls = response.get('message', {}).get('tool_calls', [])
+            
+            print(f"[DEBUG] LLM response: {response}")
+            print(f"[DEBUG] Tool calls: {tool_calls}")
             
             # Execute any tool calls
             tool_call_results = []
@@ -263,6 +296,18 @@ Respond directly to the user's query based on the simulation state. If they ask 
                     print(f"Error executing tool call: {e}")
                     tool_call_results.append(f"Error: {str(e)}")
             
+            # Check if user asked about agent positions but LLM didn't use tool call
+            if not tool_calls and ('position' in user_message.lower() or 
+                                  'where' in user_message.lower() and 'agent' in user_message.lower()):
+                positions = get_agent_positions()
+                positions_text = "\n".join(
+                    f"Agent {agent_id} is currently at position {pos}" for agent_id, pos in positions.items()
+                )
+                if response_content:
+                    response_content += f"\n\nCurrent agent positions:\n{positions_text}"
+                else:
+                    response_content = f"Current agent positions:\n{positions_text}"
+            
             # Combine LLM response with tool call results
             final_response = response_content
             if tool_call_results:
@@ -271,8 +316,8 @@ Respond directly to the user's query based on the simulation state. If they ask 
                 else:
                     final_response = "\n".join(tool_call_results)
                     
-            # If no response and no tool calls, provide a fallback
-            if not final_response:
+            # If no response and no tool calls, use a fallback response
+            if not final_response and not tool_calls:
                 final_response = "I couldn't understand your request. Please try rephrasing or use more specific instructions."
                 
             return jsonify({'response': final_response})
@@ -312,8 +357,17 @@ def log_count():
 
 
 if __name__ == '__main__':
-    print("Starting Flask app...")
     print(f"Python version: {sys.version}")
-    print("Visit http://127.0.0.1:5000")
-    # Initialize the simulation when the app starts
-    app.run(debug=True)
+    print("Starting Flask app and simulation...")
+
+    # Start the simulation in a separate process
+    simulation_process = multiprocessing.Process(target=run_simulation_with_plots)
+    simulation_process.start()
+
+    # Start the Flask app in the main process
+    try:
+        app.run(debug=True, use_reloader=False)  # Disable the auto-reloader so simulation does not start twice
+    finally:
+        # Ensure the simulation process is terminated when Flask exits
+        simulation_process.terminate()
+        simulation_process.join()

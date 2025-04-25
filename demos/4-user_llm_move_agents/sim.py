@@ -80,77 +80,79 @@ def init_plot():
     
     return []
 
+# filepath: [sim.py](http://_vscodecontentref_/10)
 def update_plot(frame=None):
     """Update the plot for animation or manual mode."""
     global animation_running
     if not animation_running:
         return []
 
-    # Add debug prints
-    print(f"[PLOT DEBUG] agent_waypoints: {simulation_controller.agent_waypoints}")
-    print(f"[PLOT DEBUG] agent_full_paths: {simulation_controller.agent_full_paths}")
-    
-    handles = []
-    labels = []
-    
-    ax.clear()
+    # Use the thread lock to ensure thread-safe access to shared data
+    with simulation_controller.data_lock:
+        # Debug: Print the current state of waypoints and paths
+        print(f"[PLOT DEBUG] agent_waypoints: {simulation_controller.agent_waypoints}")
+        print(f"[PLOT DEBUG] agent_full_paths: {simulation_controller.agent_full_paths}")
+        
+        handles = []
+        labels = []
+        
+        ax.clear()
 
-    # Configure position plot
-    ax.set_xlim(x_range)
-    ax.set_ylim(y_range)
-    ax.set_xlabel('X Position')
-    ax.set_ylabel('Y Position')
-    ax.set_title('Manual Agent Control Simulation')
-    ax.grid(True)
+        # Configure position plot
+        ax.set_xlim(x_range)
+        ax.set_ylim(y_range)
+        ax.set_xlabel('X Position')
+        ax.set_ylabel('Y Position')
+        ax.set_title('Manual Agent Control Simulation')
+        ax.grid(True)
 
-    for agent_id, positions in simulation_controller.swarm_pos_dict.items():
-        if not positions:
-            continue
+        for agent_id, positions in simulation_controller.swarm_pos_dict.items():
+            if not positions:
+                continue
 
-        # Plot path history
-        x_history = [p[0] for p in positions]
-        y_history = [p[1] for p in positions]
-        ax.plot(x_history, y_history, 'b-', alpha=0.5, label=f"{agent_id} Path History")
+            # Plot path history
+            x_history = [p[0] for p in positions]
+            y_history = [p[1] for p in positions]
+            ax.plot(x_history, y_history, 'b-', alpha=0.5, label=f"{agent_id} Path History")
 
-        # Plot current position
-        latest_position = positions[-1]
-        scatter = ax.scatter(latest_position[0], latest_position[1], color='green', s=100)
+            # Plot current position
+            latest_position = positions[-1]
+            scatter = ax.scatter(latest_position[0], latest_position[1], color='green', s=100)
 
-        # Plot waypoints - don't remove them here
-        if agent_id in simulation_controller.agent_waypoints:
-            waypoints = simulation_controller.agent_waypoints[agent_id]
-            for i, waypoint in enumerate(waypoints):
-                ax.scatter(waypoint[0], waypoint[1], color='orange', s=80, marker='o')
-                ax.annotate(f"{agent_id} W{i+1}", (waypoint[0], waypoint[1]),
-                            fontsize=8, ha='center', va='bottom')
+            # Plot waypoints
+            if agent_id in simulation_controller.agent_waypoints:
+                waypoints = simulation_controller.agent_waypoints[agent_id]
+                for i, waypoint in enumerate(waypoints):
+                    ax.scatter(waypoint[0], waypoint[1], color='orange', s=80, marker='o')
+                    ax.annotate(f"{agent_id} W{i+1}", (waypoint[0], waypoint[1]),
+                                fontsize=8, ha='center', va='bottom')
 
-        # Plot the full linear path (use full path, not remaining path)
-        if agent_id in simulation_controller.agent_full_paths:
-            full_path = simulation_controller.agent_full_paths[agent_id]
-            if full_path:  # Check if path is not empty
-                path_x = [p[0] for p in full_path]
-                path_y = [p[1] for p in full_path]
-                ax.plot(path_x, path_y, 'r--', alpha=0.7, label=f"{agent_id} Linear Path")
-                print(f"[PLOT DEBUG] Plotting path with {len(full_path)} points: {full_path}")
+            # Plot the full linear path
+            if agent_id in simulation_controller.agent_full_paths:
+                full_path = simulation_controller.agent_full_paths[agent_id]
+                if full_path:
+                    path_x = [p[0] for p in full_path]
+                    path_y = [p[1] for p in full_path]
+                    ax.plot(path_x, path_y, 'r--', alpha=0.7, label=f"{agent_id} Linear Path")
 
-        # Annotate agent ID
-        ax.annotate(agent_id, (latest_position[0], latest_position[1]),
-                    fontsize=8, ha='center', va='bottom')
+            # Annotate agent ID
+            ax.annotate(agent_id, (latest_position[0], latest_position[1]),
+                        fontsize=8, ha='center', va='bottom')
 
-        # Collect legend handles and labels
-        handles.append(scatter)
-        labels.append(f"{agent_id}")
+            # Collect legend handles and labels
+            handles.append(scatter)
+            labels.append(f"{agent_id}")
 
-    # Prevent duplicate legends
-    if ax.get_legend():
-        ax.get_legend().remove()
+        # Prevent duplicate legends
+        if ax.get_legend():
+            ax.get_legend().remove()
 
-    # Only add legend once, using the green dots
-    if handles:
-        ax.legend(handles, labels, loc='upper left')
+        # Only add legend once, using the green dots
+        if handles:
+            ax.legend(handles, labels, loc='upper left')
 
-    # Force redraw to ensure all elements are displayed
-    plt.draw()
+        # Force redraw to ensure all elements are displayed
+        plt.draw()
     
     return []
 
@@ -211,7 +213,3 @@ def run_simulation_with_plots():
                                          interval=1000, blit=False, cache_frame_data=False)
         plt.subplots_adjust(bottom=0.15)
         plt.show()
-
-if __name__ == "__main__":
-    print("Running manual agent control simulation")
-    run_simulation_with_plots()

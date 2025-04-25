@@ -6,6 +6,9 @@ import time
 from rag_store import add_log
 import threading
 
+# Lock for synchronizing access to shared data
+data_lock = threading.Lock()
+
 
 # Simulation configuration
 x_range = (-10, 10)
@@ -14,7 +17,7 @@ num_agents = 1
 max_movement_per_step = np.sqrt((x_range[1] - x_range[0])**2 + (y_range[1] - y_range[0])**2) / 20
 MAX_POSITIONS = 10  # Maximum number of positions to keep in swarm_pos_dict for each agent
 UPDATE_FREQ = 3  # Frequency of updates in seconds
-AGENT_CLOSE_TO_WAYPOINT_THRESHOLD = 0.2  # Threshold for considering an agent close to a waypoint
+AGENT_CLOSE_TO_WAYPOINT_THRESHOLD = 0.5  # Threshold for considering an agent close to a waypoint
 
 # State management
 swarm_pos_dict = {}
@@ -141,6 +144,7 @@ def is_close_to_target(position, target, threshold=AGENT_CLOSE_TO_WAYPOINT_THRES
     pos_np = np.array(position)
     target_np = np.array(target)
     distance = np.linalg.norm(pos_np - target_np)
+    print(f"[DEBUG] Distance to waypoint: {distance}, threshold: {threshold}")
     return distance <= threshold
 
 def generate_linear_path(start_pos, target_pos):
@@ -194,10 +198,13 @@ def update_simulation():
                             # Remove the reached waypoint
                             agent_waypoints[agent_id].pop(0)
                             
-                            # Clear the full path since waypoint is reached
-                            if agent_id in agent_full_paths:
-                                agent_full_paths[agent_id] = []
-                                print(f"[DEBUG] Cleared full path for agent {agent_id} after reaching waypoint")
+                            # Only clear the full path if there are no more waypoints
+                            if not agent_waypoints[agent_id]:
+                                if agent_id in agent_full_paths:
+                                    # Retain the full path for a short duration
+                                    time.sleep(1)  # Retain for 1 second
+                                    agent_full_paths[agent_id] = []
+                                    print(f"[DEBUG] Cleared full path for agent {agent_id} after reaching last waypoint")
                     
                     agent_modes[agent_id] = "random"
 
@@ -451,47 +458,55 @@ def add_waypoint(agent_id, target_x, target_y):
     The agent will move to this waypoint in a linear path.
     """
     global agent_waypoints, agent_paths, agent_full_paths
-    
-    # Parse the agent ID to handle different formats
-    agent_id_str = parse_agent_id(agent_id)
-    
-    # Check if agent exists
-    if agent_id_str not in swarm_pos_dict:
-        print(f"[ERROR] Cannot add waypoint - Agent {agent_id_str} does not exist")
-        return False
-    
-    # Ensure target is within bounds
-    target_x = max(min(float(target_x), x_range[1]), x_range[0])
-    target_y = max(min(float(target_y), y_range[1]), y_range[0])
-    target_pos = (target_x, target_y)
-    
-    # Initialize waypoints list if not exists
-    if agent_id_str not in agent_waypoints:
-        agent_waypoints[agent_id_str] = []
-    
-    # Add the waypoint to the queue
-    agent_waypoints[agent_id_str].append((target_x, target_y))
-    
-    # Generate a linear path from current position to waypoint
-    current_pos = swarm_pos_dict[agent_id_str][-1][:2]
-    linear_path = generate_linear_path(current_pos, target_pos)
-    
-    # Save the path
-    agent_paths[agent_id_str] = linear_path
-    agent_full_paths[agent_id_str] = linear_path.copy()
-    
-    # Set the agent mode to user_directed
-    agent_modes[agent_id_str] = "user_directed"
-    
-    # Log the addition of a waypoint
-    log_agent_data(agent_id_str, current_pos, {
-        'action': 'waypoint_added',
-        'waypoint': target_pos,
-        'source': 'user_command'
-    })
-    
-    print(f"[DEBUG] Added waypoint for {agent_id_str}: ({target_x}, {target_y})")
-    print(f"[DEBUG] Generated linear path with {len(linear_path)} points")
+
+    with data_lock:  # Ensure thread-safe access
+        # Parse the agent ID to handle different formats
+        agent_id_str = parse_agent_id(agent_id)
+
+        # Check if agent exists
+        if agent_id_str not in swarm_pos_dict:
+            print(f"[ERROR] Cannot add waypoint - Agent {agent_id_str} does not exist")
+            return False
+
+        # Ensure target is within bounds
+        target_x = max(min(float(target_x), x_range[1]), x_range[0])
+        target_y = max(min(float(target_y), y_range[1]), y_range[0])
+        target_pos = (target_x, target_y)
+
+        # Initialize waypoints list if not exists
+        if agent_id_str not in agent_waypoints:
+            agent_waypoints[agent_id_str] = []
+
+        # Add the waypoint to the queue
+        agent_waypoints[agent_id_str].append((target_x, target_y))
+
+        # Generate a linear path from current position to waypoint
+        current_pos = swarm_pos_dict[agent_id_str][-1][:2]
+        linear_path = generate_linear_path(current_pos, target_pos)
+
+        # Save the path
+        agent_paths[agent_id_str] = linear_path
+
+        # Ensure we save the FULL path for plotting and prevent early clearing
+        agent_full_paths[agent_id_str] = linear_path.copy()
+        print(f"[DEBUG] Set full path for visualization with {len(linear_path)} points: {agent_full_paths[agent_id_str]}")
+
+        # Set the agent mode to user_directed
+        agent_modes[agent_id_str] = "user_directed"
+
+        # Log the addition of a waypoint
+        log_agent_data(agent_id_str, current_pos, {
+            'action': 'waypoint_added',
+            'waypoint': target_pos,
+            'source': 'user_command'
+        })
+
+        print(f"[DEBUG] Added waypoint for {agent_id_str}: ({target_x}, {target_y})")
+        print(f"[DEBUG] Generated linear path with {len(linear_path)} points")
+
+        # Log the current state of waypoints for debugging
+        print_waypoints_status()
+
     return True
 
 def print_waypoints_status():
