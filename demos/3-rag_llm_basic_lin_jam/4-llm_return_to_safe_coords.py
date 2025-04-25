@@ -15,7 +15,7 @@ LLM_MODEL = get_model_name()
 from rag_store import add_log  # Import additional needed functions
 
 # Toggle between LLM and algorithm-based control
-USE_LLM = True  # Set to True to use LLM, False to use algorithm
+USE_LLM = False  # Set to True to use LLM, False to use algorithm
 
 RAG_UPDATE_FREQUENCY = 5  # Log agent data every 5 iterations (same as buffer size)
 iteration_count = 0  # Track the number of iterations

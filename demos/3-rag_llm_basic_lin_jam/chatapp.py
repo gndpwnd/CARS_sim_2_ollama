@@ -72,80 +72,87 @@ def chat():
         user_message = request.json.get('message')
         if not user_message:
             return jsonify({'error': 'No message provided'}), 400
-
-        # Get ALL recent logs for context
-        logs = fetch_logs_from_db(limit=NUM_LOGS_CONTEXT)
-        print(f"Retrieved {len(logs)} logs for context")
         
+        # Get ALL logs for RAG context without limit
+        logs = fetch_logs_from_db()
+        print(f"Retrieved {len(logs)} logs for RAG context")
+        
+        # Sort logs by timestamp for consistency
         logs_sorted = sorted(
             logs,
-            key=lambda x: x.get("metadata", {}).get("timestamp", x.get("log_id", "")),
-            reverse=True
+            key=lambda x: x.get("metadata", {}).get("timestamp", x.get("created_at", "")),
+            reverse=True  # Most recent first
         )
         
-        # Provide rich context from simulation logs
-        context_logs = logs_sorted[:15]  # Use up to 15 logs for better context
-        
-        # Format the context information in a clean way
+        # Format context in a structured way
         simulation_context = []
-        for log in context_logs:
-            agent_id = log.get("metadata", {}).get("agent_id", "Unknown")
-            position = log.get("metadata", {}).get("position", "Unknown")
-            jammed = "JAMMED" if log.get("metadata", {}).get("jammed", False) else "CLEAR"
-            timestamp = log.get("metadata", {}).get("timestamp", "Unknown time")
+        for log in logs_sorted:
+            metadata = log.get("metadata", {})
+            agent_id = metadata.get("agent_id", "Unknown")
+            position = metadata.get("position", "Unknown")
+            jammed = "JAMMED" if metadata.get("jammed", False) else "CLEAR"
+            timestamp = metadata.get("timestamp", "Unknown time")
+            text = log.get("text", "")
             
-            # Create a structured context entry
-            entry = f"Agent {agent_id} at position {position} is {jammed} at {timestamp}"
+            # Create rich context entries
+            entry = f"LOG: Agent {agent_id} at position {position} is {jammed} at {timestamp}: {text}"
             simulation_context.append(entry)
         
-        # Join all context entries
+        # Format full context
         context_text = "\n".join(simulation_context)
-
-        # Create a structured prompt
-        prompt = f"""
-You are an assistant for a Multi-Agent Simulation system. Users can ask you about the current state of the simulation.
-
-CURRENT SIMULATION STATE:
-{context_text}
-
-USER QUERY: {user_message}
-
-Respond to the user's query based on the simulation state information provided above.
-"""
-
-        # Call the LLM with the enhanced prompt
         
+        # Create a clear system prompt for the LLM
+        system_prompt = "You are an assistant for a Multi-Agent Simulation system. Provide helpful, accurate information about the simulation based on the logs."
+        
+        # Call the LLM with all information
         response = ollama.chat(
             model=LLM_MODEL,
-            messages=[{"role": "system", "content": prompt}]
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"SIMULATION LOGS:\n{context_text}\n\nUSER QUERY: {user_message}\n\nAnswer based only on information in the logs above."}
+            ]
         )
-        ollama_response = response.get('message', {}).get('content', "Sorry, I didn't understand that.")
-
-        # Log both user message and bot response
+        
+        # Debug response
+        print("\n===== LLM RESPONSE =====")
+        print(f"Model: {response.model}")
+        print("Content:", end=" ")
+        if hasattr(response, 'message') and response.message:
+            print(response.message.content)
+        else:
+            print("NO CONTENT")
+        print("========================\n")
+        
+        # Extract response safely
+        ollama_response = ""
+        if hasattr(response, 'message') and response.message:
+            if hasattr(response.message, 'content') and response.message.content:
+                ollama_response = response.message.content
+        
+        # Ensure we got some response
+        if not ollama_response.strip():
+            ollama_response = "I'm unable to provide an answer based on the available logs."
+        
+        # Log interaction
         timestamp = datetime.now().isoformat()
-
         add_log(user_message, {
             "role": "user",
             "timestamp": timestamp,
             "agent_id": "user",
             "source": "chat"
         })
-
         add_log(ollama_response, {
             "role": "assistant",
             "timestamp": timestamp,
             "agent_id": "ollama",
             "source": "chat"
         })
-
-
+        
         return jsonify({'response': ollama_response})
-
     except Exception as e:
         print(f"ERROR in chat route: {e}")
         traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
-
+        return jsonify({'error': str(e), 'error_type': type(e).__name__}), 500
 
 @app.route("/logs")
 def get_logs():
