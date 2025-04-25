@@ -36,25 +36,27 @@ def send_to_mcp_server(command_text):
     """Send the raw command to the MCP server for processing via Ollama"""
     try:
         response = requests.post(
-            f"{MCP_SERVER_URL}/llm_command",  # <- You may rename this endpoint if needed
+            f"{MCP_SERVER_URL}/llm_command",
             json={"message": command_text},
             timeout=10
         )
-        
+
         if response.status_code == 200:
             result = response.json()
-            print(f"[MCP] {result.get('message', 'No message in response')}")
+            print(f"[MCP] Command processed")
 
-            if result.get("action") == "move":
-                agent = result.get("agent")
-                x = result.get("x")
-                y = result.get("y")
-                if agent and x is not None and y is not None:
-                    move_agent(agent, x, y)
+            for item in result.get("results", []):
+                if item.get("action") == "move" and item.get("success"):
+                    agent = item.get("agent")
+                    x = item.get("x")
+                    y = item.get("y")
+                    if agent and x is not None and y is not None:
+                        move_agent(agent, x, y)
         else:
             print(f"[HTTP ERROR] Status code: {response.status_code}")
     except Exception as e:
         print(f"[CONNECTION ERROR] Failed to communicate with MCP server: {e}")
+
 
 
 # === Plot Setup ===

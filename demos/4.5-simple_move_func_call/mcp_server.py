@@ -62,20 +62,23 @@ async def llm_command(request: Request):
 
 User command: "{command}"
 
-Determine if the user wants to move an agent. If so, extract:
+Determine if the user wants to move one or more agents. For each movement, extract:
 - agent name
 - x coordinate
 - y coordinate
 
-Respond in pure JSON format:
-{{
-    "understood": true/false,
-    "action": "move" or "unknown",
-    "agent": "agent name",
-    "x": number,
-    "y": number,
-    "message": "summary of interpretation"
-}}
+Respond in pure JSON array format:
+[
+    {{
+        "understood": true/false,
+        "action": "move" or "unknown",
+        "agent": "agent name",
+        "x": number,
+        "y": number,
+        "message": "summary of interpretation"
+    }},
+    ...
+]
 
 Only valid JSON. No extra text or explanations.
 """
@@ -84,33 +87,32 @@ Only valid JSON. No extra text or explanations.
         response = client.chat(model=OLLAMA_MODEL, messages=[
             {"role": "user", "content": prompt}
         ])
-
         raw_response = response['message']['content']
         print(f"[OLLAMA RESPONSE] {raw_response}")
 
-        # Try to extract clean JSON (in case Ollama adds markdown)
-        json_match = re.search(r'\{.*\}', raw_response, re.DOTALL)
-        parsed = json.loads(json_match.group(0)) if json_match else json.loads(raw_response)
+        # Extract clean JSON list
+        json_match = re.search(r'\[.*\]', raw_response, re.DOTALL)
+        parsed_list = json.loads(json_match.group(0)) if json_match else json.loads(raw_response)
 
-        if parsed.get("understood") and parsed.get("action") == "move":
-            agent = parsed.get("agent")
-            x = parsed.get("x")
-            y = parsed.get("y")
+        results = []
+        for parsed in parsed_list:
+            if parsed.get("understood") and parsed.get("action") == "move":
+                results.append({
+                    "success": True,
+                    "action": "move",
+                    "agent": parsed["agent"],
+                    "x": parsed["x"],
+                    "y": parsed["y"],
+                    "message": parsed.get("message", "")
+                })
+            else:
+                results.append({
+                    "success": False,
+                    "action": "unknown",
+                    "message": parsed.get("message", "Command not understood")
+                })
 
-            return {
-                "success": True,
-                "action": "move",
-                "agent": agent,
-                "x": x,
-                "y": y,
-                "message": parsed.get("message", "Moving agent")
-            }
-        else:
-            return {
-                "success": False,
-                "action": "unknown",
-                "message": parsed.get("message", "Command not understood")
-            }
+        return {"results": results}
 
     except Exception as e:
         print(f"[ERROR] {e}")
@@ -118,6 +120,7 @@ Only valid JSON. No extra text or explanations.
             "success": False,
             "message": f"Error processing command: {e}"
         }
+
 
 
 if __name__ == "__main__":
