@@ -32,52 +32,30 @@ def move_agent(agent, x, y):
     else:
         print(f"[WARNING] Unknown agent '{agent}'")
 
-def parse_command(command_text):
-    """Parse simple commands like 'move agent1 to 5,5'"""
-    move_pattern = r"move\s+(\w+)\s+to\s+(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)"
-    match = re.match(move_pattern, command_text, re.IGNORECASE)
-    
-    if match:
-        agent_name = match.group(1)
-        x = float(match.group(2))
-        y = float(match.group(3))
-        return {"action": "move", "agent": agent_name, "x": x, "y": y}
-    
-    return None
-
 def send_to_mcp_server(command_text):
-    """Send the command to the MCP server for processing"""
-    # First try to parse the command locally to determine what API endpoint to use
-    parsed = parse_command(command_text)
-    
-    if parsed and parsed["action"] == "move":
-        try:
-            # Send to the move_agent endpoint
-            response = requests.post(
-                f"{MCP_SERVER_URL}/move_agent_via_ollama",
-                json={
-                    "agent": parsed["agent"],
-                    "x": parsed["x"],
-                    "y": parsed["y"]
-                },
-                timeout=10
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                if result["success"]:
-                    # Apply the movement in the simulation
-                    move_agent(parsed["agent"], result["x"], result["y"])
-                    print(f"[MCP] {result['message']}")
-                else:
-                    print(f"[MCP ERROR] {result['message']}")
-            else:
-                print(f"[HTTP ERROR] Status code: {response.status_code}")
-                
-        except Exception as e:
-            print(f"[CONNECTION ERROR] Failed to communicate with MCP server: {e}")
-    else:
-        print(f"[PARSE ERROR] Could not understand command: '{command_text}'")
+    """Send the raw command to the MCP server for processing via Ollama"""
+    try:
+        response = requests.post(
+            f"{MCP_SERVER_URL}/llm_command",  # <- You may rename this endpoint if needed
+            json={"message": command_text},
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            print(f"[MCP] {result.get('message', 'No message in response')}")
+
+            if result.get("action") == "move":
+                agent = result.get("agent")
+                x = result.get("x")
+                y = result.get("y")
+                if agent and x is not None and y is not None:
+                    move_agent(agent, x, y)
+        else:
+            print(f"[HTTP ERROR] Status code: {response.status_code}")
+    except Exception as e:
+        print(f"[CONNECTION ERROR] Failed to communicate with MCP server: {e}")
+
 
 # === Plot Setup ===
 fig, ax = plt.subplots()
