@@ -7,6 +7,7 @@ import json
 import re
 
 UPDATE_FREQ = 2  # how fast to update the simulation (in seconds)
+MCP_SERVER_URL = "http://127.0.0.1:5000"  # URL for the MCP server
 
 # === Agent Config ===
 NUM_AGENTS = 2
@@ -20,6 +21,7 @@ ani = None
 labels = []
 
 def move_agent(agent, x, y):
+    """Local function to update agent positions in the simulation"""
     if agent in AGENTS:
         print(f"[ACTION] Moving {agent} to ({x}, {y})")
         AGENTS[agent]["pos"] = [x, y]
@@ -29,102 +31,52 @@ def move_agent(agent, x, y):
     else:
         print(f"[WARNING] Unknown agent '{agent}'")
 
-
-
-def query_ollama_for_move(command):
-    url = "http://localhost:11434/api/chat"
+def parse_command(command_text):
+    """Parse simple commands like 'move agent1 to 5,5'"""
+    move_pattern = r"move\s+(\w+)\s+to\s+(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)"
+    match = re.match(move_pattern, command_text, re.IGNORECASE)
     
-    # Parse the command (e.g., "move agent1 to 5,5")
-    parts = command.split()
-    agent = parts[1]  # agent name (e.g., "agent1")
-    target_x, target_y = map(float, parts[3].split(','))  # target coordinates (e.g., "5,5")
+    if match:
+        agent_name = match.group(1)
+        x = float(match.group(2))
+        y = float(match.group(3))
+        return {"action": "move", "agent": agent_name, "x": x, "y": y}
     
-    if agent not in AGENTS:
-        print(f"[ERROR] Agent {agent} not found.")
-        return
+    return None
 
-    current_x, current_y = AGENTS[agent]["pos"]  # Get the current position of the agent
+def send_to_mcp_server(command_text):
+    """Send the command to the MCP server for processing"""
+    # First try to parse the command locally to determine what API endpoint to use
+    parsed = parse_command(command_text)
     
-    # Construct the prompt with current position and target position
-    prompt = f"""
-Please move {agent}, currently at coordinates ({current_x:.1f}, {current_y:.1f}), 
-to the target coordinates ({target_x:.1f}, {target_y:.1f}). 
-The response should include the new position in the exact format: 
-'New position of agent1 is (x, y)' where x and y are numeric values. 
-Do not include any other text or explanations.
-"""
-
-    # Prepare the request data
-    data = {
-        "model": "llama3.2:3b-instruct-q5_K_M",
-        "messages": [{"role": "user", "content": prompt}],
-        "functions": [
-            {
-                "name": "move_agent",
-                "description": "Moves an agent to a specific coordinate on a 2D plot",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "agent": {"type": "string"},
-                        "x": {"type": "number"},
-                        "y": {"type": "number"}
-                    },
-                    "required": ["agent", "x", "y"]
-                }
-            }
-        ],
-        "stream": False
-    }
-
-    print(f"[QUERY] Sending prompt to Ollama: {prompt}")
-    try:
-        response = requests.post(url, json=data)
-        response_json = response.json()
-        print(f"[RESPONSE] Full Ollama response:\n{json.dumps(response_json, indent=2)}")
-
-        message = response_json.get("message", {}).get("content")
-        if message:
-            # Try to extract the new coordinates from Ollama's response
-            new_x, new_y = extract_coordinates_from_message(message)
+    if parsed and parsed["action"] == "move":
+        try:
+            # Send to the move_agent endpoint
+            response = requests.post(
+                f"{MCP_SERVER_URL}/move_agent_via_ollama",
+                json={
+                    "agent": parsed["agent"],
+                    "x": parsed["x"],
+                    "y": parsed["y"]
+                },
+                timeout=10
+            )
             
-            if new_x is not None and new_y is not None:
-                # Move the agent to the new coordinates
-                move_agent(agent, new_x, new_y)
+            if response.status_code == 200:
+                result = response.json()
+                if result["success"]:
+                    # Apply the movement in the simulation
+                    move_agent(parsed["agent"], result["x"], result["y"])
+                    print(f"[MCP] {result['message']}")
+                else:
+                    print(f"[MCP ERROR] {result['message']}")
             else:
-                print("[INFO] Unable to extract valid coordinates from the LLM response.")
-        else:
-            print("[INFO] No message content returned from Ollama.")
-    except Exception as e:
-        print(f"[ERROR] Failed to contact Ollama: {e}")
-
-def extract_coordinates_from_message(message):
-    """
-    Extracts the new x, y coordinates from the response message content.
-    The response should be in the format:
-    - 'New position of agent1 is (x, y)'
-    - or simply '(x, y)' or "'(x, y)'" (with or without extra quotes).
-    """
-    # Try extracting full sentence format: 'New position of agent1 is (x, y)'
-    match_full = re.search(r"New position of .* is \((-?\d*\.?\d+), (-?\d*\.?\d+)\)", message)
-    if match_full:
-        try:
-            x = float(match_full.group(1))
-            y = float(match_full.group(2))
-            return x, y
-        except ValueError:
-            print("[ERROR] Invalid coordinates in response.")
-    
-    # Try extracting simple coordinates format with or without extra quotes: '(x, y)' or "'(x, y)'"
-    match_simple = re.search(r"'?\((-?\d*\.?\d+), (-?\d*\.?\d+)\)'?", message)
-    if match_simple:
-        try:
-            x = float(match_simple.group(1))
-            y = float(match_simple.group(2))
-            return x, y
-        except ValueError:
-            print("[ERROR] Invalid coordinates in response.")
-    
-    return None, None
+                print(f"[HTTP ERROR] Status code: {response.status_code}")
+                
+        except Exception as e:
+            print(f"[CONNECTION ERROR] Failed to communicate with MCP server: {e}")
+    else:
+        print(f"[PARSE ERROR] Could not understand command: '{command_text}'")
 
 # === Plot Setup ===
 fig, ax = plt.subplots()
@@ -135,7 +87,6 @@ ax.set_title("Ollama-Controlled Agents Simulation", fontsize=14, fontweight='bol
 scat = ax.scatter([], [], c='blue')
 
 # === Animation Function ===
-# Modify the update function to wait for the LLM's response
 def update(frame):
     if not is_running:
         return scat,
@@ -182,7 +133,6 @@ def update(frame):
         labels.append(label)
 
     return scat,
-
 
 # === Buttons ===
 button_width = 0.1
@@ -237,7 +187,8 @@ def handle_send(event):
     command = text_box.text.strip()
     if command:
         print(f"[INPUT] User entered command: {command}")
-        query_ollama_for_move(command)
+        # Send command to the MCP server for processing
+        send_to_mcp_server(command)
 
 btn_send.on_clicked(handle_send)
 
