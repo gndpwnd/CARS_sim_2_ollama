@@ -1,8 +1,7 @@
-# integrated_mcp_server.py
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates  # Add this import
+from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 from fastmcp import FastMCP
 import ollama
@@ -86,6 +85,19 @@ def fetch_logs_from_db(limit=None):
 async def move_agent(agent: str, x: float, y: float) -> dict:
     """Move an agent to specific coordinates"""
     print(f"[ACTION] Move agent '{agent}' to ({x}, {y})")
+    
+    # Log the movement action to RAG store
+    timestamp = datetime.now().isoformat()
+    action_text = f"Moving agent {agent} to coordinates ({x}, {y})"
+    
+    add_log(action_text, {
+        "agent_id": agent,
+        "position": f"({x}, {y})",
+        "timestamp": timestamp,
+        "source": "mcp",
+        "action": "move"
+    })
+    
     return {
         "success": True,
         "message": f"Moving {agent} to coordinates ({x}, {y})",
@@ -111,6 +123,15 @@ async def llm_command(request: Request):
     command = data.get("message", "")
 
     print(f"[RECEIVED COMMAND] {command}")
+    
+    # Log the user command
+    timestamp = datetime.now().isoformat()
+    add_log(command, {
+        "role": "user",
+        "timestamp": timestamp,
+        "agent_id": "user",
+        "source": "command"
+    })
 
     # Format prompt for the LLM
     prompt = f"""You are an AI that controls agents in a 2D simulation.
@@ -152,13 +173,21 @@ Only valid JSON. No extra text or explanations.
         results = []
         for parsed in parsed_list:
             if parsed.get("understood") and parsed.get("action") == "move":
+                # Execute the move
+                agent_name = parsed["agent"]
+                x_coord = parsed["x"]
+                y_coord = parsed["y"]
+                
+                # Call the move_agent function to handle the actual movement
+                move_result = await move_agent(agent_name, x_coord, y_coord)
+                
                 results.append({
                     "success": True,
                     "action": "move",
-                    "agent": parsed["agent"],
-                    "x": parsed["x"],
-                    "y": parsed["y"],
-                    "message": parsed.get("message", "")
+                    "agent": agent_name,
+                    "x": x_coord,
+                    "y": y_coord,
+                    "message": parsed.get("message", f"Moving {agent_name} to ({x_coord}, {y_coord})")
                 })
             else:
                 results.append({
@@ -166,11 +195,28 @@ Only valid JSON. No extra text or explanations.
                     "action": "unknown",
                     "message": parsed.get("message", "Command not understood")
                 })
+                
+                # Log the failure
+                add_log(f"Command not understood: {command}", {
+                    "role": "system",
+                    "timestamp": datetime.now().isoformat(),
+                    "source": "command",
+                    "success": False
+                })
 
         return {"results": results}
 
     except Exception as e:
         print(f"[ERROR] {e}")
+        
+        # Log the error
+        add_log(f"Error processing command: {e}", {
+            "role": "system",
+            "timestamp": datetime.now().isoformat(),
+            "source": "command",
+            "error": str(e)
+        })
+        
         return {
             "success": False,
             "message": f"Error processing command: {e}"
