@@ -6,6 +6,14 @@ from matplotlib.widgets import Button
 from matplotlib.animation import FuncAnimation
 import datetime
 from matplotlib.gridspec import GridSpec
+import threading
+import uvicorn
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import json
+from typing import Dict, List, Tuple, Optional, Any
+import time
 
 # Import shared LLM configuration
 from llm_config import get_ollama_client, get_model_name
@@ -16,6 +24,18 @@ from sim_helper_funcs import (
     round_coord, is_jammed, linear_path, limit_movement, 
     algorithm_make_move, llm_make_move, parse_llm_response,
     get_last_safe_position, log_batch_of_data
+)
+
+# Create FastAPI app
+app = FastAPI()
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Toggle between LLM and algorithm-based control
@@ -66,6 +86,7 @@ animation_object = None
 fig = None
 ax1 = None
 ax2 = None
+manually_moved_agents = set()
 
 # Initialize LLM client
 ollama = get_ollama_client()
@@ -306,8 +327,12 @@ def update_plot(frame):
         # Plot current position
         latest_data = swarm_pos_dict[agent_id][-1]
 
-        # Color based on jammed status
-        color = 'red' if jammed_positions[agent_id] else 'green'
+        # Special color if agent was moved manually
+        if agent_id in manually_moved_agents:
+            color = 'blue'  # Highlight moved agents in blue
+        else:
+            color = 'red' if jammed_positions[agent_id] else 'green'
+
         ax1.scatter(latest_data[0], latest_data[1], color=color, s=100, label=f"{agent_id}")
 
         # Annotate agent ID
@@ -398,6 +423,236 @@ def run_simulation_with_plots():
     
     plt.show()
 
+# Define Pydantic models for API request/response
+class MoveAgentRequest(BaseModel):
+    agent: str
+    x: float
+    y: float
+
+class AgentPosition(BaseModel):
+    x: float
+    y: float
+    communication_quality: float
+    jammed: bool
+
+class SimulationStatus(BaseModel):
+    running: bool
+    iteration_count: int
+    agent_positions: Dict[str, AgentPosition]
+
+class SimulationSettings(BaseModel):
+    use_llm: bool = None
+    mission_end: Tuple[float, float] = None
+    jamming_center: Tuple[float, float] = None
+    jamming_radius: float = None
+
+# API endpoints
+@app.get("/")
+async def root():
+    return {"message": "Simulation API is running"}
+
+@app.get("/status", response_model=SimulationStatus)
+async def get_status():
+    """Get the current status of the simulation"""
+    global swarm_pos_dict, jammed_positions, iteration_count, animation_running
+    
+    agent_positions = {}
+    for agent_id in swarm_pos_dict:
+        if swarm_pos_dict[agent_id]:
+            latest_pos = swarm_pos_dict[agent_id][-1]
+            agent_positions[agent_id] = AgentPosition(
+                x=latest_pos[0],
+                y=latest_pos[1],
+                communication_quality=latest_pos[2],
+                jammed=jammed_positions.get(agent_id, False)
+            )
+    
+    return SimulationStatus(
+        running=animation_running,
+        iteration_count=iteration_count,
+        agent_positions=agent_positions
+    )
+
+@app.post("/move_agent")
+async def move_agent(request: MoveAgentRequest):
+    """Move an agent to specific coordinates"""
+    global swarm_pos_dict, position_history, jammed_positions
+    
+    agent_id = request.agent
+    x = request.x
+    y = request.y
+    
+    print(f"[API CALL] Received request to move {agent_id} to ({x}, {y})")
+    
+    # Check if agent exists
+    if agent_id not in swarm_pos_dict:
+        print(f"[API ERROR] Agent {agent_id} not found")
+        raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
+    
+    # Get last position
+    last_position = swarm_pos_dict[agent_id][-1][:2]
+    print(f"[API INFO] Current position of {agent_id}: {last_position}")
+    
+    # Calculate distance to ensure it doesn't exceed max_movement_per_step
+    distance = math.sqrt((x - last_position[0])**2 + (y - last_position[1])**2)
+    if distance > max_movement_per_step:
+        # Limit the movement to max_movement_per_step
+        limited_pos = limit_movement(last_position, (x, y), max_movement_per_step)
+        print(f"[API LIMIT] Movement limited from ({x}, {y}) to {limited_pos}")
+        x, y = limited_pos
+    
+    # Check if new position is jammed
+    is_agent_jammed = is_jammed((x, y), jamming_center, jamming_radius)
+    comm_quality = low_comm_qual if is_agent_jammed else high_comm_qual
+    print(f"[API STATUS] New position jammed status: {is_agent_jammed}, comm quality: {comm_quality}")
+    
+    # Update position
+    swarm_pos_dict[agent_id].append([x, y, comm_quality])
+    position_history[agent_id].append((x, y))
+
+    # update manually moved agents
+    manually_moved_agents.add(agent_id)
+    
+    # Update jammed status
+    jammed_positions[agent_id] = is_agent_jammed
+    
+    # Log the movement
+    timestamp = datetime.datetime.now().isoformat()
+    add_log(f"API moved agent {agent_id} to coordinates ({x}, {y})", {
+        "agent_id": agent_id,
+        "position": f"({x}, {y})",
+        "timestamp": timestamp,
+        "source": "api",
+        "action": "move",
+        "jammed": is_agent_jammed
+    })
+    
+    print(f"[API SUCCESS] Moved {agent_id} to ({x}, {y})")
+    
+    return {
+        "success": True,
+        "message": f"Agent {agent_id} moved to ({x}, {y})",
+        "jammed": is_agent_jammed,
+        "communication_quality": comm_quality
+    }
+
+@app.get("/agents")
+async def get_agents():
+    """Get list of all agents and their current status"""
+    global swarm_pos_dict, jammed_positions
+    
+    agents = {}
+    for agent_id in swarm_pos_dict:
+        if swarm_pos_dict[agent_id]:
+            latest_pos = swarm_pos_dict[agent_id][-1]
+            # Convert numpy types to Python native types
+            agents[agent_id] = {
+                "position": [float(latest_pos[0]), float(latest_pos[1])],
+                "communication_quality": float(latest_pos[2]),
+                "jammed": bool(jammed_positions.get(agent_id, False))
+            }
+    
+    return {"agents": agents}
+
+@app.get("/simulation_params")
+async def get_simulation_params():
+    """Get current simulation parameters"""
+    return {
+        "use_llm": USE_LLM,
+        "mission_end": mission_end,
+        "jamming_center": jamming_center,
+        "jamming_radius": jamming_radius,
+        "max_movement_per_step": max_movement_per_step,
+        "x_range": x_range,
+        "y_range": y_range
+    }
+
+@app.patch("/simulation_params")
+async def update_simulation_params(settings: SimulationSettings):
+    """Update simulation parameters"""
+    global USE_LLM, mission_end, jamming_center, jamming_radius
+    
+    # Update only the parameters that are provided
+    if settings.use_llm is not None:
+        USE_LLM = settings.use_llm
+    
+    if settings.mission_end is not None:
+        mission_end = settings.mission_end
+    
+    if settings.jamming_center is not None:
+        jamming_center = settings.jamming_center
+    
+    if settings.jamming_radius is not None:
+        jamming_radius = settings.jamming_radius
+    
+    return {
+        "message": "Simulation parameters updated",
+        "current_params": {
+            "use_llm": USE_LLM,
+            "mission_end": mission_end,
+            "jamming_center": jamming_center,
+            "jamming_radius": jamming_radius
+        }
+    }
+
+@app.post("/control/pause")
+async def api_pause_simulation():
+    """Pause the simulation"""
+    global animation_running
+    animation_running = False
+    return {"message": "Simulation paused"}
+
+@app.post("/control/continue")
+async def api_continue_simulation():
+    """Continue the simulation"""
+    global animation_running
+    animation_running = True
+    return {"message": "Simulation continued"}
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log all API requests and responses"""
+    # Generate a unique request ID
+    request_id = str(time.time())
+    
+    # Get the request path and method
+    path = request.url.path
+    method = request.method
+    
+    # Log the request
+    print(f"[API REQUEST {request_id}] {method} {path}")
+    
+    # Try to get and log the request body
+    try:
+        body = await request.body()
+        if body:
+            print(f"[API REQUEST BODY {request_id}] {body.decode()}")
+    except Exception:
+        pass
+    
+    # Process the request
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = time.time() - start_time
+    
+    # Log the response
+    print(f"[API RESPONSE {request_id}] Status: {response.status_code}, Time: {process_time:.4f}s")
+    
+    return response
+
+def run_api_server():
+    """Run FastAPI server in a separate thread"""
+    uvicorn.run(app, host="127.0.0.1", port=5001)
+
 if __name__ == "__main__":
     print(f"Running simulation with {'LLM' if USE_LLM else 'Algorithm'} control")
+    
+    # Start API server in a separate thread
+    api_thread = threading.Thread(target=run_api_server, daemon=True)
+    api_thread.start()
+    
+    # Initialize agents before starting the simulation
+    initialize_agents()
+    
+    # Run the simulation with plots
     run_simulation_with_plots()

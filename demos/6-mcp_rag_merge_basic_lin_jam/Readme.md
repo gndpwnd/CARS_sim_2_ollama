@@ -1,13 +1,11 @@
 # Integrating MCP with RAG for LLM and Agent Jamming Simulation
 
 
-### Run the simulation
+### Run the Simulation and Chatapp
 
 ```
 docker compose down -v; sudo chown -R $USER:$USER ./pgdata; rm -rf ./pgdata; docker compose up -d; python sim.py
 ```
-
-### Run the MCP and RAG enabled chatapp
 
 ```
 python3 mcp_chatapp.py
