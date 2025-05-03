@@ -19,11 +19,19 @@ document.addEventListener('DOMContentLoaded', () => {
         return div;
     }
 
-    // Chat UI
-    function addMessage(message, type = 'bot') {
+    // Enhanced message display with status indicators
+    function addMessage(message, type = 'bot', status = '') {
         const messageDiv = createDiv([`${type}-message`], message);
+        if (status) {
+            messageDiv.classList.add(`message-${status}`);
+            const statusIndicator = document.createElement('span');
+            statusIndicator.className = 'status-indicator';
+            statusIndicator.textContent = status === 'success' ? '✓' : '✗';
+            messageDiv.prepend(statusIndicator);
+        }
         chatContainer.appendChild(messageDiv);
         chatContainer.scrollTop = chatContainer.scrollHeight;
+        return messageDiv;
     }
 
     // Log UI
@@ -63,211 +71,160 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
         logContainer.prepend(logDiv);
-        logContainer.scrollTop = 0; // Always scroll to top
+        logContainer.scrollTop = 0;
     }
 
-    // Log Fetcher - Load all logs at once
+    // Enhanced log loading with better error feedback
     async function loadLogs() {
         if (loading) return;
         loading = true;
         loadingDiv.textContent = "Loading logs...";
+        loadingDiv.classList.add('loading-active');
 
         try {
             const response = await fetch('/logs');
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            
             const data = await response.json();
             
-            if (!data.logs) {
-                console.error("Missing logs in response:", data);
-                loadingDiv.textContent = "Error: Invalid log data";
-                return;
+            if (!data?.logs) {
+                throw new Error("Invalid log data format");
             }
             
-            const logs = data.logs;
-            console.log(`Loaded ${logs.length} logs for RAG feed`);
+            console.log(`Loaded ${data.logs.length} logs for RAG feed`);
 
-            if (logs.length) {
-                // Clear existing logs
+            if (data.logs.length) {
+                // Clear existing logs only if we have new ones
                 logContainer.innerHTML = '';
                 seenLogIds.clear();
                 
-                // Add all logs in reverse chronological order
-                logs.forEach(log => {
+                data.logs.forEach(log => {
                     addLog(log);
-                    
-                    // Track this log ID
                     seenLogIds.add(log.log_id);
                     
-                    // Keep track of the most recent timestamp
                     const timestamp = log?.metadata?.timestamp;
                     if (timestamp && (!lastLogTimestamp || new Date(timestamp) > new Date(lastLogTimestamp))) {
                         lastLogTimestamp = timestamp;
                     }
                 });
                 
-                console.log("Logs loaded successfully. Latest timestamp:", lastLogTimestamp);
+                loadingDiv.textContent = `Loaded ${data.logs.length} logs. Latest: ${new Date(lastLogTimestamp).toLocaleTimeString()}`;
+            } else {
+                loadingDiv.textContent = "No new logs available";
             }
-
-            loadingDiv.textContent = `${logs.length} logs loaded.`;
         } catch (e) {
             console.error("Error loading logs:", e);
-            loadingDiv.textContent = "Error loading logs.";
+            loadingDiv.textContent = `Error: ${e.message}`;
+            loadingDiv.classList.add('error');
+            setTimeout(() => loadingDiv.classList.remove('error'), 2000);
         } finally {
+            loadingDiv.classList.remove('loading-active');
             loading = false;
         }
     }
 
-    // Improved MCP Command Handler - Updated to match new API response format
-    async function sendMcpCommand(command) {
+
+    async function sendCommand(command) {
         try {
-            console.log("Sending MCP command:", command);
+            console.log("Sending command:", command);
             const response = await fetch('/llm_command', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message: command })
             });
-            
-            if (!response.ok) {
-                throw new Error(`Server returned ${response.status}: ${response.statusText}`);
-            }
-            
+    
             const data = await response.json();
-            console.log("MCP command response:", data);
-            
-            // Handle the response format from /llm_command
-            if (data.results && data.results.length > 0) {
-                const firstResult = data.results[0];
-                
-                if (firstResult.success) {
-                    // Successful movement command
-                    let message = firstResult.message || `Command received to move ${firstResult.agent} to (${firstResult.x}, ${firstResult.y})`;
-                    
-                    if (firstResult.jammed) {
-                        message += `\n⚠️ Agent is currently jammed. It will first return to safe position before proceeding.`;
-                    }
-                    
-                    addMessage(message, 'bot');
-                    
-                    // Refresh logs after command execution
-                    setTimeout(loadLogs, 500);
-                    return firstResult;
-                } else {
-                    // Failed command
-                    let errorMessage = firstResult.message || 'Command failed';
-                    addMessage(errorMessage, 'bot');
-                    return null;
-                }
-            } else {
-                addMessage("No results received from command processing", 'bot');
-                return null;
-            }
+            console.log("Full response:", data);
+    
+            // Use actual response with fallback
+            const responseText = data?.response?.trim() || "No response received.";
+    
+            return {
+                success: !!data?.response?.trim(),
+                message: responseText,
+                raw: data
+            };
+    
         } catch (err) {
-            console.error("MCP command error:", err);
-            addMessage(`Error executing command: ${err.message}`, 'bot');
-            return null;
+            return {
+                success: false,
+                message: err.message || "Command failed",
+                error: err
+            };
         }
     }
-
-    // Improved chat submission with better error handling
+    
     messageForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const userInput = messageInput.value.trim();
         if (!userInput) return;
-
-        // Show user message immediately
+    
+        // Show user message
         addMessage(userInput, 'user');
         messageInput.value = '';
         
-        // Add loading indicator
-        const loadingIndicator = document.createElement('div');
-        loadingIndicator.classList.add('bot-message', 'loading');
-        loadingIndicator.innerText = 'Thinking...';
-        chatContainer.appendChild(loadingIndicator);
-        
-        // Check if this might be a movement command
-        const moveKeywords = ['move', 'go', 'place', 'put', 'send', 'position'];
-        const isMoveCommand = moveKeywords.some(keyword => 
-            userInput.toLowerCase().includes(keyword)
-        );
-        
+        // Show loading
+        const loadingIndicator = addMessage("Processing...", 'bot', 'loading');
+    
         try {
-            // If it looks like a movement command, try MCP first
-            if (isMoveCommand) {
-                try {
-                    // Attempt to process as MCP command
-                    const mcpResult = await sendMcpCommand(userInput);
-                    
-                    // If successfully processed as movement, remove loading and return
-                    if (mcpResult && mcpResult.success) {
-                        // Remove loading indicator
-                        chatContainer.removeChild(loadingIndicator);
-                        return;
-                    }
-                    // Otherwise fall through to regular chat processing
-                } catch (mcpErr) {
-                    console.log("Not a valid MCP command, falling back to chat:", mcpErr);
-                    // Continue to regular chat processing
-                }
-            }
+            const { success, message, raw } = await sendCommand(userInput);
             
-            // Process as regular chat message
-            console.log("Sending chat request with:", userInput);
-            const response = await fetch('/chat', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ message: userInput })
-            });
-
-            // Remove loading indicator
-            chatContainer.removeChild(loadingIndicator);
-            
-            if (!response.ok) {
-                throw new Error(`Server returned ${response.status}: ${response.statusText}`);
-            }
-
-            const data = await response.json();
-            console.log("Received response data:", data);
-            
-            if (data.error) {
-                console.error("Server error:", data.error);
-                addMessage(`Error: ${data.error}`, 'bot');
-                return;
-            }
-
-            // Show the bot response
-            const botReply = data.response || "No response received.";
-            addMessage(botReply, 'bot');
-            
-            // Refresh the log list to include new chat messages
-            setTimeout(loadLogs, 500);
-            
-        } catch (err) {
-            console.error("Chat error:", err);
-            
-            // Remove loading indicator if still there
+            // Remove loading
             if (loadingIndicator.parentNode === chatContainer) {
                 chatContainer.removeChild(loadingIndicator);
             }
-            
-            addMessage(`Error: ${err.message || "Could not contact the server."}`, 'bot');
+    
+            let style = 'success';
+            if (!success || message.includes('Error') || message.includes('not found') || message.includes('Invalid')) {
+                style = 'error';
+            } else if (message === "Not a movement command") {
+                style = 'info';
+            }
+    
+            // Show formatted response
+            addMessage(message, 'bot', style);
+    
+            // Refresh logs
+            setTimeout(loadLogs, 1000);
+    
+        } catch (err) {
+            console.error("Error:", err);
+            if (loadingIndicator.parentNode === chatContainer) {
+                chatContainer.removeChild(loadingIndicator);
+            }
+            addMessage(`Error: ${err.message}`, 'bot', 'error');
         }
     });
+    
 
-    // Log polling function - reload all logs periodically
-    function startLogPolling(interval = 5000) {
-        console.log(`Starting log polling every ${interval}ms`);
-        setInterval(() => {
-            if (!loading) {
-                console.log("Reloading logs...");
-                loadLogs();
+    // Log polling with backoff on errors
+    function startLogPolling(baseInterval = 5000) {
+        let currentInterval = baseInterval;
+        let errorCount = 0;
+        
+        const poll = async () => {
+            if (loading) return;
+            
+            try {
+                await loadLogs();
+                errorCount = 0;
+                currentInterval = baseInterval;
+            } catch (e) {
+                errorCount++;
+                if (errorCount > 3) {
+                    currentInterval = Math.min(currentInterval * 2, 30000); // Max 30s delay
+                    console.warn(`Error count ${errorCount}, increasing poll interval to ${currentInterval}ms`);
+                }
             }
-        }, interval);
+            
+            setTimeout(poll, currentInterval);
+        };
+        
+        console.log(`Starting adaptive log polling (base interval: ${baseInterval}ms)`);
+        poll();
     }
 
-    // Initial load and stream
+    // Initial load
     loadLogs();
     startLogPolling();
 });

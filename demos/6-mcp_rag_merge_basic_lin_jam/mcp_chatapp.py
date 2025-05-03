@@ -178,93 +178,59 @@ async def llm_command(request: Request):
         print(f"[ERROR] Failed to fetch available agents: {e}")
         available_agents = {}
 
-    # Format prompt for the LLM - Initial parsing
+    # Format prompt for the LLM - now focused on extracting movement commands
     prompt = f"""You are an AI that controls agents in a 2D simulation.
 
 Available agents: {", ".join(available_agents.keys()) if available_agents else "No agents available"}
 
 User command: "{command}"
 
-Determine if the user wants to move one or more agents. For each movement, extract:
-- agent name (must be one of the available agents)
-- x coordinate
-- y coordinate
+If this is a movement command, extract:
+1. The agent name (must match an available agent)
+2. The x coordinate (number)
+3. The y coordinate (number)
 
-If the user specifies "agent X" (where X is a number), the actual agent name is "agentX" (no space).
+Respond ONLY with the agent name and coordinates in this exact format:
+agent_name,x,y
 
-Respond in pure JSON array format:
-[
-    {{
-        "understood": true/false,
-        "action": "move" or "unknown",
-        "agent": "agent name",
-        "x": number,
-        "y": number,
-        "message": "summary of interpretation"
-    }},
-    ...
-]
-
-Only valid JSON. No extra text or explanations.
+If it's not a movement command, respond with: "Not a movement command"
 """
 
     try:
-        # Step 1: Initial LLM parsing
+        # Get LLM response
         response = ollama_client.chat(model=LLM_MODEL, messages=[
             {"role": "user", "content": prompt}
         ])
-        raw_response = response['message']['content']
-        print(f"[OLLAMA INITIAL RESPONSE] {raw_response}")
+        
+        raw_response = response['message']['content'].strip()
+        print(f"[OLLAMA RESPONSE] {raw_response}")
 
-        # Parse the response into a Python object
-        try:
-            parsed_list = json.loads(raw_response)
-            if not isinstance(parsed_list, list):
-                raise ValueError("Parsed response is not a list")
-        except (json.JSONDecodeError, ValueError) as e:
-            print(f"[ERROR] Failed to parse LLM response as JSON: {e}")
-            return {"error": "Failed to parse LLM response as JSON or invalid format"}
-
-        results = []
-        for parsed in parsed_list:
-            if isinstance(parsed, dict) and parsed.get("understood") and parsed.get("action") == "move":
-                # Format the agent name correctly (remove spaces if needed)
-                agent_name = parsed["agent"].replace(" ", "")
+        # Check if response matches our expected movement command format
+        if "," in raw_response and len(raw_response.split(",")) == 3:
+            agent_name, x_str, y_str = raw_response.split(",")
+            agent_name = agent_name.strip()
+            
+            # Validate agent exists
+            if agent_name not in available_agents:
+                return {"response": f"Error: Agent '{agent_name}' not found in simulation"}
+            
+            try:
+                x = float(x_str.strip())
+                y = float(y_str.strip())
                 
-                # Check if agent exists
-                if agent_name not in available_agents and available_agents:
-                    results.append({
-                        "success": False,
-                        "action": "unknown",
-                        "message": f"Agent '{agent_name}' does not exist in the simulation"
-                    })
-                    continue
+                # Actually execute the movement
+                move_result = await move_agent(agent_name, x, y)
                 
-                # Step 2: Format the command for a function call
-                x_coord = parsed["x"]
-                y_coord = parsed["y"]
-                
-                # Log the interpreted command
-                print(f"[INTERPRETED COMMAND] Move {agent_name} to ({x_coord}, {y_coord})")
-                
-                # Call the move_agent function
-                move_result = await move_agent(agent_name, x_coord, y_coord)
-                results.append({
-                    "success": move_result.get("success", False),
-                    "action": "move",
-                    "agent": agent_name,
-                    "x": x_coord,
-                    "y": y_coord,
-                    "message": move_result.get("message", f"Moving {agent_name} to ({x_coord}, {y_coord})")
-                })
-            else:
-                results.append({
-                    "success": False,
-                    "action": "unknown",
-                    "message": parsed.get("message", "Command not understood") if isinstance(parsed, dict) else "Invalid response format"
-                })
-
-        return {"results": results}
+                if move_result.get("success"):
+                    return {"response": f"Moving {agent_name} to ({x}, {y}). {move_result.get('message', '')}"}
+                else:
+                    return {"response": f"Failed to move {agent_name}: {move_result.get('message', 'Unknown error')}"}
+            
+            except ValueError:
+                return {"response": f"Invalid coordinates: {x_str}, {y_str}"}
+        
+        # Not a movement command or invalid format
+        return {"response": raw_response if raw_response else "Command not understood"}
 
     except Exception as e:
         print(f"[ERROR] {e}")
@@ -279,8 +245,7 @@ Only valid JSON. No extra text or explanations.
         })
         
         return {
-            "success": False,
-            "message": f"Error processing command: {e}"
+            "response": f"Error processing command: {e}"
         }
 
 # Chat endpoint from Flask app now in FastAPI - Updated to incorporate simulation status
@@ -346,8 +311,25 @@ async def chat(request: Request):
         # Format full context
         context_text = "\n".join(simulation_context)
         
+        # Check for duplicate commands (issued within last 10 seconds)
+        for log in logs_sorted[:5]:  # Check most recent 5 logs
+            metadata = log.get("metadata", {})
+            if metadata.get("role") == "user" and metadata.get("source") == "command":
+                recent_time = metadata.get("timestamp")
+                recent_text = log.get("text", "")
+                if recent_time and (datetime.now() - datetime.fromisoformat(recent_time)).total_seconds() < 10:
+                    if recent_text.lower() == user_message.lower():
+                        print(f"Detected duplicate command processing: '{user_message}'")
+                        return {"response": ""}  # Empty response for duplicates
+        
         # Create a clear system prompt for the LLM
-        system_prompt = "You are an assistant for a Multi-Agent Simulation system. Provide helpful, accurate information about the simulation based on the logs and current status."
+        system_prompt = """You are an assistant for a Multi-Agent Simulation system. Provide helpful, accurate information about the simulation based on the logs and current status.
+
+Keep your responses concise and focused on answering the user's questions.
+- If the user is asking about agent positions or statuses, give them the current information
+- Don't recite all the log history unless specifically asked
+- For questions about recent commands, just give a brief status update
+"""
         
         # Call the LLM with all information
         response = ollama_client.chat(

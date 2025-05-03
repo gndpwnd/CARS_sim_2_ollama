@@ -2,6 +2,7 @@
 > <a href="https://github.com/Swarm-Squad" target="_blank" rel="noopener noreferrer">Swarm-Squad</a>
 
 > using python 3.11
+> pip install torch --index-url https://download.pytorch.org/whl/cpu
 
 Install python3.11 on ubuntu
 

@@ -1,4 +1,4 @@
-/* Main layout */
+/* Main layout (unchanged) */
 body {
     font-family: Arial, sans-serif;
     margin: 0;
@@ -13,7 +13,7 @@ body {
     max-height: 100vh;
 }
 
-/* RAG Feed styles */
+/* RAG Feed styles (unchanged) */
 #rag-feed {
     flex: 1;
     background-color: #f9f9f9;
@@ -107,14 +107,26 @@ body {
     color: #388e3c;
 }
 
+/* Enhanced loading indicator */
 #loading {
     padding: 0.5rem;
     text-align: center;
     color: #777;
     font-size: 0.9rem;
+    transition: all 0.3s ease;
 }
 
-/* Chat container styles */
+#loading.loading-active {
+    color: #4285f4;
+    font-weight: bold;
+}
+
+#loading.error {
+    color: #d32f2f;
+    animation: none;
+}
+
+/* Chat container styles with status enhancements */
 #chat-container {
     flex: 1.5;
     display: flex;
@@ -165,14 +177,44 @@ body {
     border-bottom-left-radius: 4px;
 }
 
+/* Status indicators for messages */
+.status-indicator {
+    margin-right: 8px;
+    font-weight: bold;
+    display: inline-block;
+    width: 1em;
+    text-align: center;
+}
+
+.message-success {
+    border-left: 4px solid #34a853;
+}
+
+.message-success .status-indicator {
+    color: #34a853;
+}
+
+.message-error {
+    border-left: 4px solid #d32f2f;
+}
+
+.message-error .status-indicator {
+    color: #d32f2f;
+}
+
+/* Enhanced loading states */
 .bot-message.loading {
     background-color: #f5f5f5;
-    color: #999;
+    color: #666;
     font-style: italic;
+    border-left: 4px solid #fbbc05;
 }
 
 .bot-message.loading:after {
     content: '...';
+    display: inline-block;
+    width: 1em;
+    text-align: left;
     animation: dots 1.5s steps(5, end) infinite;
 }
 
@@ -183,6 +225,18 @@ body {
     80%, 100% { content: ''; }
 }
 
+/* Pulse animation for loading states */
+@keyframes pulse {
+    0% { opacity: 0.6; }
+    50% { opacity: 1; }
+    100% { opacity: 0.6; }
+}
+
+.loading-pulse {
+    animation: pulse 1.5s infinite;
+}
+
+/* Form styles (unchanged) */
 #message-form {
     display: flex;
     gap: 0.5rem;
@@ -218,7 +272,7 @@ body {
     background-color: #3367d6;
 }
 
-/* Responsive adjustments */
+/* Responsive adjustments (unchanged) */
 @media (max-width: 768px) {
     #main-container {
         flex-direction: column;
