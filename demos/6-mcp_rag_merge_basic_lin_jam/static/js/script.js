@@ -142,7 +142,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return {
                 success: !!data?.response?.trim(),
                 message: responseText,
-                raw: data
+                raw: data,
+                liveData: data?.live_data || null  // Include live data in return
             };
     
         } catch (err) {
@@ -167,7 +168,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const loadingIndicator = addMessage("Processing...", 'bot', 'loading');
     
         try {
-            const { success, message, raw } = await sendCommand(userInput);
+            const { success, message, raw, liveData } = await sendCommand(userInput);
             
             // Remove loading
             if (loadingIndicator.parentNode === chatContainer) {
@@ -182,7 +183,27 @@ document.addEventListener('DOMContentLoaded', () => {
             }
     
             // Show formatted response
-            addMessage(message, 'bot', style);
+            const responseDiv = addMessage(message, 'bot', style);
+            
+            // Add live data visualization if available
+            if (liveData) {
+                const liveDataDiv = createDiv(['live-data-container']);
+                
+                Object.entries(liveData).forEach(([agentId, data]) => {
+                    if (data) {
+                        const agentDiv = createDiv(['live-agent-data']);
+                        agentDiv.innerHTML = `
+                            <strong>${agentId}</strong>:
+                            Position (${data.x?.toFixed(2)}, ${data.y?.toFixed(2)})
+                            | Comm: ${(data.communication_quality * 100).toFixed(0)}%
+                            | ${data.jammed ? '🚫 Jammed' : '✅ Clear'}
+                        `;
+                        liveDataDiv.appendChild(agentDiv);
+                    }
+                });
+                
+                responseDiv.appendChild(liveDataDiv);
+            }
     
             // Refresh logs
             setTimeout(loadLogs, 1000);

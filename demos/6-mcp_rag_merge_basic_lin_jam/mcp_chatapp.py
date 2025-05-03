@@ -112,7 +112,7 @@ async def move_agent(agent: str, x: float, y: float) -> dict:
                              f"It will first return to its last safe position at {result.get('current_position')} "
                              f"before proceeding to ({x}, {y}).")
                 else:
-                    message = f"Moving {agent} to coordinates ({x}, {y}). Current position: {result.get('current_position')}"
+                    message = f"Moving {agent} to coordinates ({x}, {y})."
                 
                 return {
                     "success": True,
@@ -168,22 +168,34 @@ async def llm_command(request: Request):
 
     # First get the available agents from the simulation
     available_agents = {}
+    live_agent_data = {}  # Store live data for LLM context
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get(f"{SIMULATION_API_URL}/agents")
-            if response.status_code == 200:
-                available_agents = response.json().get("agents", {})
+            # Get both agent list and their current status
+            agents_response = await client.get(f"{SIMULATION_API_URL}/agents")
+            status_response = await client.get(f"{SIMULATION_API_URL}/status")
+            
+            if agents_response.status_code == 200:
+                available_agents = agents_response.json().get("agents", {})
                 print(f"[AVAILABLE AGENTS] {list(available_agents.keys())}")
+            
+            if status_response.status_code == 200:
+                live_agent_data = status_response.json()
+                print(f"[LIVE AGENT DATA] Retrieved for {len(live_agent_data.get('agent_positions', {}))} agents")
     except Exception as e:
-        print(f"[ERROR] Failed to fetch available agents: {e}")
+        print(f"[ERROR] Failed to fetch agent data: {e}")
         available_agents = {}
+        live_agent_data = {}
 
-    # Format prompt for the LLM - now focused on extracting movement commands
+    # Format prompt for the LLM with both historical and live data
     prompt = f"""You are an AI that controls agents in a 2D simulation.
 
 Available agents: {", ".join(available_agents.keys()) if available_agents else "No agents available"}
 
 User command: "{command}"
+
+LIVE AGENT STATUS:
+{format_live_agent_data(live_agent_data)}
 
 If this is a movement command, extract:
 1. The agent name (must match an available agent)
@@ -222,7 +234,14 @@ If it's not a movement command, respond with: "Not a movement command"
                 move_result = await move_agent(agent_name, x, y)
                 
                 if move_result.get("success"):
-                    return {"response": f"Moving {agent_name} to ({x}, {y}). {move_result.get('message', '')}"}
+                    # Include live data in response
+                    response_data = {
+                        "response": f"Moving {agent_name} to ({x}, {y}). {move_result.get('message', '')}",
+                        "live_data": {
+                            agent_name: live_agent_data.get('agent_positions', {}).get(agent_name)
+                        }
+                    }
+                    return response_data
                 else:
                     return {"response": f"Failed to move {agent_name}: {move_result.get('message', 'Unknown error')}"}
             
@@ -247,6 +266,22 @@ If it's not a movement command, respond with: "Not a movement command"
         return {
             "response": f"Error processing command: {e}"
         }
+
+def format_live_agent_data(live_data):
+    """Format live agent data for LLM prompt"""
+    if not live_data or not live_data.get('agent_positions'):
+        return "No live agent data available"
+    
+    formatted = []
+    for agent_id, data in live_data['agent_positions'].items():
+        status = "JAMMED" if data.get('jammed', False) else "CLEAR"
+        comm_quality = data.get('communication_quality', 0)
+        pos = data.get('position', {})
+        formatted.append(
+            f"{agent_id}: Position ({pos.get('x', '?')}, {pos.get('y', '?')}) - {status} - Comm: {comm_quality:.2f}"
+        )
+    
+    return "\n".join(formatted)
 
 # Chat endpoint from Flask app now in FastAPI - Updated to incorporate simulation status
 @app.post("/chat")

@@ -272,6 +272,24 @@ body {
     background-color: #3367d6;
 }
 
+.live-data-container {
+    margin-top: 10px;
+    padding: 8px;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+.live-agent-data {
+    margin: 4px 0;
+    padding: 4px;
+    border-bottom: 1px solid #eee;
+}
+
+.live-agent-data:last-child {
+    border-bottom: none;
+}
+
 /* Responsive adjustments (unchanged) */
 @media (max-width: 768px) {
     #main-container {
