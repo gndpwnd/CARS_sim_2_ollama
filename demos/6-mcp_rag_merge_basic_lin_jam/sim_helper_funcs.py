@@ -185,37 +185,6 @@ def algorithm_make_move(agent_id, current_pos, jamming_center, jamming_radius,
     
     return (round_coord(suggestion[0]), round_coord(suggestion[1]))
 
-def parse_llm_response(response):
-    """
-    Parses the LLM response to extract the new coordinates (x, y).
-    Returns a tuple (x, y) if successful, or None if the format is incorrect.
-    """
-    # Try different regex patterns to match coordinates
-    # Pattern 1: (x, y) format with any number of digits
-    pattern1 = r"\((-?\d+\.?\d*),\s*(-?\d+\.?\d*)\)"
-    # Pattern 2: x: value, y: value format
-    pattern2 = r"x:?\s*(-?\d+\.?\d*)[,\s]*y:?\s*(-?\d+\.?\d*)"
-    # Pattern 3: Just two numbers separated by comma
-    pattern3 = r"(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)"
-    # Pattern 4: Just two numbers on separate lines
-    pattern4 = r"(-?\d+\.?\d*)\s*\n\s*(-?\d+\.?\d*)"
-    
-    # Try each pattern
-    for pattern in [pattern1, pattern2, pattern3, pattern4]:
-        match = re.search(pattern, response)
-        if match:
-            try:
-                new_x = float(match.group(1))
-                new_y = float(match.group(2))
-                return (round_coord(new_x), round_coord(new_y))
-            except ValueError:
-                print(f"Matched pattern but couldn't convert to float: {match.group(1)}, {match.group(2)}")
-                continue
-    
-    # If we got here, no pattern matched
-    print(f"No valid coordinate format found in response: \"{response}\"")
-    return None
-
 def llm_make_move(agent_id, swarm_pos_dict, num_history_segments, ollama, LLM_MODEL, MAX_CHARS_PER_AGENT, 
                  MAX_RETRIES, jamming_center, jamming_radius, max_movement_per_step, x_range, y_range):
     """Use LLM to determine movement for jammed agents"""

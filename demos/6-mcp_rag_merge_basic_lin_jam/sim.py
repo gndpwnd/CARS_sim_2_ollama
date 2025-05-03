@@ -22,7 +22,7 @@ from rag_store import add_log  # Import additional needed functions
 # Import helper functions
 from sim_helper_funcs import (
     round_coord, is_jammed, linear_path, limit_movement, 
-    algorithm_make_move, llm_make_move, parse_llm_response,
+    algorithm_make_move, llm_make_move,
     get_last_safe_position, log_batch_of_data
 )
 

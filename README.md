@@ -2,7 +2,7 @@
 > <a href="https://github.com/Swarm-Squad" target="_blank" rel="noopener noreferrer">Swarm-Squad</a>
 
 > using python 3.11
-> pip install torch --index-url https://download.pytorch.org/whl/cpu
+> if using torch, pip install torch --index-url https://download.pytorch.org/whl/cpu
 
 Install python3.11 on ubuntu
 
@@ -38,11 +38,7 @@ install requirements
 pip install --upgrade pip; pip install -r requirements.txt
 ```
 
-in a separate terminal, start the ollama server
-
-```
-ollama run llama3.2:1b 
-```
+in a separate terminal, start the ollama server and run the necessary ollama model
 
 ## Running the Demos
 
