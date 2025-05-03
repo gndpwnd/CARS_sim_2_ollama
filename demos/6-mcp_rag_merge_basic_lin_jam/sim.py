@@ -42,7 +42,7 @@ app.add_middleware(
 USE_LLM = False  # Set to True to use LLM, False to use algorithm
 
 # Configuration parameters
-update_freq = 0.5
+update_freq = 2.5 # seconds 
 high_comm_qual = 0.80
 low_comm_qual = 0.20
 x_range = (-10, 10)
@@ -87,6 +87,7 @@ fig = None
 ax1 = None
 ax2 = None
 manually_moved_agents = set()
+agent_targets = {}  # Format: {agent_id: (target_x, target_y)}
 
 # Initialize LLM client
 ollama = get_ollama_client()
@@ -137,6 +138,44 @@ def update_swarm_data(frame):
             # Mark communication quality as low
             swarm_pos_dict[agent_id][-1][2] = low_comm_qual
         
+        # Check if the agent has a target coordinate
+        if agent_id in agent_targets:
+            target_x, target_y = agent_targets[agent_id]
+            distance_to_target = math.sqrt((target_x - last_position[0])**2 + (target_y - last_position[1])**2)
+
+            if distance_to_target <= max_movement_per_step:
+                # Target reached
+                print(f"{agent_id} reached target coordinate: ({target_x}, {target_y})")
+                swarm_pos_dict[agent_id].append([target_x, target_y, high_comm_qual])
+                position_history[agent_id].append((target_x, target_y))
+                del agent_targets[agent_id]  # Remove the target
+                
+                # Now create a new path to mission end from this position
+                print(f"{agent_id} calculating new path to mission endpoint from ({target_x}, {target_y})")
+                agent_paths[agent_id] = linear_path((target_x, target_y), mission_end, max_movement_per_step)
+                
+                # Store this position as a safe position if we're not in a jamming zone
+                if not is_jammed((target_x, target_y), jamming_center, jamming_radius):
+                    last_safe_position[agent_id] = (target_x, target_y)
+            else:
+                # Move toward the target
+                next_pos = limit_movement(last_position, (target_x, target_y), max_movement_per_step)
+                print(f"{agent_id} moving toward target: {next_pos}")
+                
+                # Check if this position is jammed and update communication quality accordingly
+                is_pos_jammed = is_jammed(next_pos, jamming_center, jamming_radius)
+                comm_quality = low_comm_qual if is_pos_jammed else high_comm_qual
+                
+                # Update position with appropriate communication quality
+                swarm_pos_dict[agent_id].append([next_pos[0], next_pos[1], comm_quality])
+                position_history[agent_id].append(next_pos)
+                
+                # Update jammed status if entering jamming zone
+                if is_pos_jammed and not jammed_positions[agent_id]:
+                    jammed_positions[agent_id] = True
+                    print(f"{agent_id} has entered jamming zone while moving to target.")
+            continue
+
         # Handle movement logic based on jammed status
         if jammed_positions[agent_id]:
             # Two-step process: 1) Return to safe position, 2) Get new move
@@ -204,26 +243,14 @@ def update_swarm_data(frame):
             # Not jammed, proceed with normal movement
             if agent_id in agent_paths and agent_paths[agent_id]:
                 next_pos = agent_paths[agent_id].pop(0)
-                
-                # Save current position as safe if not jammed
                 if not is_jammed(last_position, jamming_center, jamming_radius):
                     last_safe_position[agent_id] = last_position
-                
-                # Update position
                 swarm_pos_dict[agent_id].append([next_pos[0], next_pos[1], high_comm_qual])
                 position_history[agent_id].append(next_pos)
-                
-                # Check if new position is jammed
                 if is_jammed(next_pos, jamming_center, jamming_radius):
-                    print(f"{agent_id} has entered jamming zone at {next_pos}")
                     jammed_positions[agent_id] = True
-                    swarm_pos_dict[agent_id][-1][2] = low_comm_qual  # Lower comm quality
-                
-                # Check if we've reached the mission end
-                if math.sqrt((next_pos[0] - mission_end[0])**2 + 
-                          (next_pos[1] - mission_end[1])**2) < 0.5:
-                    print(f"{agent_id} has reached mission endpoint!")
-                    # Clear path to stop further movement
+                    swarm_pos_dict[agent_id][-1][2] = low_comm_qual
+                if math.sqrt((next_pos[0] - mission_end[0])**2 + (next_pos[1] - mission_end[1])**2) < 0.5:
                     agent_paths[agent_id] = []
 
 # Button callback functions
@@ -476,7 +503,7 @@ async def get_status():
 @app.post("/move_agent")
 async def move_agent(request: MoveAgentRequest):
     """Move an agent to specific coordinates"""
-    global swarm_pos_dict, position_history, jammed_positions
+    global swarm_pos_dict, agent_targets
     
     agent_id = request.agent
     x = request.x
@@ -489,51 +516,23 @@ async def move_agent(request: MoveAgentRequest):
         print(f"[API ERROR] Agent {agent_id} not found")
         raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
     
-    # Get last position
-    last_position = swarm_pos_dict[agent_id][-1][:2]
-    print(f"[API INFO] Current position of {agent_id}: {last_position}")
+    # Set the target coordinates for the agent
+    agent_targets[agent_id] = (x, y)
+    print(f"[API INFO] Target for {agent_id} set to ({x}, {y})")
     
-    # Calculate distance to ensure it doesn't exceed max_movement_per_step
-    distance = math.sqrt((x - last_position[0])**2 + (y - last_position[1])**2)
-    if distance > max_movement_per_step:
-        # Limit the movement to max_movement_per_step
-        limited_pos = limit_movement(last_position, (x, y), max_movement_per_step)
-        print(f"[API LIMIT] Movement limited from ({x}, {y}) to {limited_pos}")
-        x, y = limited_pos
-    
-    # Check if new position is jammed
-    is_agent_jammed = is_jammed((x, y), jamming_center, jamming_radius)
-    comm_quality = low_comm_qual if is_agent_jammed else high_comm_qual
-    print(f"[API STATUS] New position jammed status: {is_agent_jammed}, comm quality: {comm_quality}")
-    
-    # Update position
-    swarm_pos_dict[agent_id].append([x, y, comm_quality])
-    position_history[agent_id].append((x, y))
-
-    # update manually moved agents
-    manually_moved_agents.add(agent_id)
-    
-    # Update jammed status
-    jammed_positions[agent_id] = is_agent_jammed
-    
-    # Log the movement
+    # Log the target assignment
     timestamp = datetime.datetime.now().isoformat()
-    add_log(f"API moved agent {agent_id} to coordinates ({x}, {y})", {
+    add_log(f"API set target for agent {agent_id} to coordinates ({x}, {y})", {
         "agent_id": agent_id,
-        "position": f"({x}, {y})",
+        "target": f"({x}, {y})",
         "timestamp": timestamp,
         "source": "api",
-        "action": "move",
-        "jammed": is_agent_jammed
+        "action": "set_target"
     })
-    
-    print(f"[API SUCCESS] Moved {agent_id} to ({x}, {y})")
     
     return {
         "success": True,
-        "message": f"Agent {agent_id} moved to ({x}, {y})",
-        "jammed": is_agent_jammed,
-        "communication_quality": comm_quality
+        "message": f"Agent {agent_id} will move toward ({x}, {y})"
     }
 
 @app.get("/agents")

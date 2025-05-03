@@ -116,7 +116,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // MCP Command Sender - NEW FUNCTIONALITY
+    // Improved MCP Command Handler - Updated to match new API response format
     async function sendMcpCommand(command) {
         try {
             console.log("Sending MCP command:", command);
@@ -135,21 +135,32 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
             console.log("MCP command response:", data);
             
+            // Handle the response format from /llm_command
             if (data.results && data.results.length > 0) {
-                // Display results in chat
-                const resultsStr = data.results.map(r => 
-                    r.success ? 
-                    `✅ ${r.message || `Moving ${r.agent} to (${r.x}, ${r.y})`}` : 
-                    `❌ ${r.message || 'Command not understood'}`
-                ).join('\n');
+                const firstResult = data.results[0];
                 
-                addMessage(`Command processed:\n${resultsStr}`, 'bot');
-                
-                // Refresh logs after command execution
-                setTimeout(loadLogs, 500);
-                return data;
+                if (firstResult.success) {
+                    // Successful movement command
+                    let message = firstResult.message || `Command received to move ${firstResult.agent} to (${firstResult.x}, ${firstResult.y})`;
+                    
+                    if (firstResult.jammed) {
+                        message += `\n⚠️ Agent is currently jammed. It will first return to safe position before proceeding.`;
+                    }
+                    
+                    addMessage(message, 'bot');
+                    
+                    // Refresh logs after command execution
+                    setTimeout(loadLogs, 500);
+                    return firstResult;
+                } else {
+                    // Failed command
+                    let errorMessage = firstResult.message || 'Command failed';
+                    addMessage(errorMessage, 'bot');
+                    return null;
+                }
             } else {
-                throw new Error("Invalid response format");
+                addMessage("No results received from command processing", 'bot');
+                return null;
             }
         } catch (err) {
             console.error("MCP command error:", err);
@@ -188,7 +199,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const mcpResult = await sendMcpCommand(userInput);
                     
                     // If successfully processed as movement, remove loading and return
-                    if (mcpResult && mcpResult.results && mcpResult.results.some(r => r.success)) {
+                    if (mcpResult && mcpResult.success) {
                         // Remove loading indicator
                         chatContainer.removeChild(loadingIndicator);
                         return;

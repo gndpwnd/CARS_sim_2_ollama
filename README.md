@@ -3,6 +3,20 @@
 
 > using python 3.11
 
+Install python3.11 on ubuntu
+
+```
+sudo add-apt-repository ppa:deadsnakes/ppa
+sudo apt update
+sudo apt install python3.11 python3.11-venv
+```
+
+Install python3.11 on Arch Linux
+
+```
+sudo pacman -R python311
+```
+
 ## Setup For Demos
 
 clone the repo

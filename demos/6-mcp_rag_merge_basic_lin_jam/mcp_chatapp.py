@@ -76,6 +76,7 @@ def fetch_logs_from_db(limit=None):
         return []
 
 # Define the command to handle agent movement - Updated to use API calls
+# In the move_agent tool function:
 @mcp.tool()
 async def move_agent(agent: str, x: float, y: float) -> dict:
     """Move an agent to specific coordinates"""
@@ -105,13 +106,22 @@ async def move_agent(agent: str, x: float, y: float) -> dict:
                     "jammed": result.get("jammed", False)
                 })
                 
+                # Format the response message
+                if result.get("jammed", False):
+                    message = (f"Agent {agent} is currently jammed (Comm quality: {result.get('communication_quality', 0.2)}). "
+                             f"It will first return to its last safe position at {result.get('current_position')} "
+                             f"before proceeding to ({x}, {y}).")
+                else:
+                    message = f"Moving {agent} to coordinates ({x}, {y}). Current position: {result.get('current_position')}"
+                
                 return {
                     "success": True,
-                    "message": f"Moving {agent} to coordinates ({x}, {y})",
+                    "message": message,
                     "x": x,
                     "y": y,
                     "jammed": result.get("jammed", False),
-                    "communication_quality": result.get("communication_quality", 1.0)
+                    "communication_quality": result.get("communication_quality", 1.0),
+                    "current_position": result.get("current_position")
                 }
             else:
                 error_msg = f"Error moving agent: {response.text}"
@@ -121,8 +131,8 @@ async def move_agent(agent: str, x: float, y: float) -> dict:
                     "message": error_msg
                 }
         except Exception as e:
-            error_msg = f"Failed to connect to simulation API: {str(e)}"
-            print(f"[CONNECTION ERROR] {error_msg}")
+            error_msg = f"Exception occurred while moving agent: {str(e)}"
+            print(f"[EXCEPTION] {error_msg}")
             return {
                 "success": False,
                 "message": error_msg
@@ -206,13 +216,18 @@ Only valid JSON. No extra text or explanations.
         raw_response = response['message']['content']
         print(f"[OLLAMA INITIAL RESPONSE] {raw_response}")
 
-        # Extract clean JSON list
-        json_match = re.search(r'\[.*\]', raw_response, re.DOTALL)
-        parsed_list = json.loads(json_match.group(0)) if json_match else json.loads(raw_response)
+        # Parse the response into a Python object
+        try:
+            parsed_list = json.loads(raw_response)
+            if not isinstance(parsed_list, list):
+                raise ValueError("Parsed response is not a list")
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"[ERROR] Failed to parse LLM response as JSON: {e}")
+            return {"error": "Failed to parse LLM response as JSON or invalid format"}
 
         results = []
         for parsed in parsed_list:
-            if parsed.get("understood") and parsed.get("action") == "move":
+            if isinstance(parsed, dict) and parsed.get("understood") and parsed.get("action") == "move":
                 # Format the agent name correctly (remove spaces if needed)
                 agent_name = parsed["agent"].replace(" ", "")
                 
@@ -232,72 +247,21 @@ Only valid JSON. No extra text or explanations.
                 # Log the interpreted command
                 print(f"[INTERPRETED COMMAND] Move {agent_name} to ({x_coord}, {y_coord})")
                 
-                # Step 3: Have the LLM generate a function call
-                function_prompt = f"""You are an AI that controls agents in a 2D simulation.
-                
-You need to generate a function call to move an agent.
-
-The available function is:
-```python
-move_agent(agent: str, x: float, y: float) -> dict
-```
-
-Parameters:
-- agent: The name of the agent to move (e.g. "agent1", "agent2")
-- x: The x-coordinate to move to
-- y: The y-coordinate to move to
-
-Please generate a proper function call to move {agent_name} to coordinates ({x_coord}, {y_coord}).
-Return only the function call and nothing else.
-
-Example format: move_agent("agent1", 5.0, -3.5)
-"""
-
-                # Call LLM to generate function call
-                func_response = ollama_client.chat(model=LLM_MODEL, messages=[
-                    {"role": "user", "content": function_prompt}
-                ])
-                func_text = func_response['message']['content'].strip()
-                print(f"[FUNCTION CALL] {func_text}")
-                
-                # Extract the function call parameters
-                func_match = re.search(r'move_agent\s*\(\s*["\']([^"\']+)["\']?\s*,\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*\)', func_text)
-                
-                if func_match:
-                    agent_param = func_match.group(1)
-                    x_param = float(func_match.group(2))
-                    y_param = float(func_match.group(3))
-                    
-                    # Step 4: Execute the actual function call
-                    move_result = await move_agent(agent_param, x_param, y_param)
-                    
-                    results.append({
-                        "success": move_result.get("success", False),
-                        "action": "move",
-                        "agent": agent_param,
-                        "x": x_param,
-                        "y": y_param,
-                        "message": move_result.get("message", f"Moving {agent_param} to ({x_param}, {y_param})")
-                    })
-                else:
-                    results.append({
-                        "success": False,
-                        "action": "unknown",
-                        "message": "Failed to generate valid function call"
-                    })
+                # Call the move_agent function
+                move_result = await move_agent(agent_name, x_coord, y_coord)
+                results.append({
+                    "success": move_result.get("success", False),
+                    "action": "move",
+                    "agent": agent_name,
+                    "x": x_coord,
+                    "y": y_coord,
+                    "message": move_result.get("message", f"Moving {agent_name} to ({x_coord}, {y_coord})")
+                })
             else:
                 results.append({
                     "success": False,
                     "action": "unknown",
-                    "message": parsed.get("message", "Command not understood")
-                })
-                
-                # Log the failure
-                add_log(f"Command not understood: {command}", {
-                    "role": "system",
-                    "timestamp": datetime.now().isoformat(),
-                    "source": "command",
-                    "success": False
+                    "message": parsed.get("message", "Command not understood") if isinstance(parsed, dict) else "Invalid response format"
                 })
 
         return {"results": results}
