@@ -1,6 +1,44 @@
 > [Mermaid for Markdown](https://github.com/mermaid-js/mermaid)
 
-# TLDR
+> using llama3.3:70b-instruct-q5_K_M
+
+## Setup LightRAG `from source` locally
+
+Make sure LightRAG is local (added as a submodule in CARS_SIM_2_OLLAMA)
+
+```bash
+git submodule update --init --recursive  
+```
+
+if want to update LightRAG submodule to use latest upstream LightRAG repo version: 
+
+```bash
+git submodule update --remote --recursive
+```
+
+Install LightRAG Core
+
+```bash
+cd demos/7-mature_RAG/LightRAG; pip install -e .
+```
+
+OR Install LightRAG Core + API
+
+```bash
+cd demos/7-mature_RAG/LightRAG; pip install -e ".[api]"
+```
+
+### Run the Simulation and Chatapp
+
+```
+docker compose down -v; sudo chown -R $USER:$USER ./pg_data; sudo chown -R $USER:$USER ./qdrant_data; rm -rf ./pg_data ./qdrant_data; docker compose up -d; python sim.py
+```
+
+```
+python3 mcp_chatapp.py
+```
+
+# Implementing Mature Hybrid RAG - TLDR
 
 Pair PostgreSQL (structured metadata) with Qdrant (vector/geo-data) to balance relational integrity and high-speed similarity search
 
@@ -233,4 +271,39 @@ graph LR
 | PostgreSQL pgAudit    | Compliance logging for all database operations                         |
 | Qdrant API Keys       | Role-based access control for vector operations                        |
 | LightRAG RBAC         | Restrict query/insert permissions by agent type or user role           |
+```
+
+### Architecture Comparison
+
+```mermaid
+graph TB
+    subgraph "Old Architecture"
+        A1[Agent Telemetry] -->|add_log| B1[PostgreSQL + pgvector]
+        C1[MCP Messages] -->|add_log| B1
+        B1 --> D1[Vector Search]
+        B1 --> E1[SQL Joins]
+    end
+    
+    subgraph "New Hybrid Architecture"
+        A2[Agent Telemetry] -->|add_telemetry| B2[LightRAG Router]
+        C2[MCP Messages] -->|add_mcp_message| B2
+        B2 -->|Position Data, Embeddings| D2[Qdrant]
+        B2 -->|Relationships, Messages| E2[PostgreSQL]
+        D2 -->|Vector Similarity| F2[Hybrid Search]
+        E2 -->|Structured Filtering| F2
+        F2 -->|Results| G2[Graph-Aware Ranking]
+    end
+    
+    style A1 fill:#d0e0ff,stroke:#333,stroke-width:1px
+    style A2 fill:#d0e0ff,stroke:#333,stroke-width:1px
+    style B1 fill:#ffe0e0,stroke:#333,stroke-width:1px
+    style B2 fill:#e0f0e0,stroke:#333,stroke-width:1px
+    style C1 fill:#d0e0ff,stroke:#333,stroke-width:1px
+    style C2 fill:#d0e0ff,stroke:#333,stroke-width:1px
+    style D1 fill:#ffe0e0,stroke:#333,stroke-width:1px
+    style D2 fill:#fff0d0,stroke:#333,stroke-width:1px
+    style E1 fill:#ffe0e0,stroke:#333,stroke-width:1px
+    style E2 fill:#ffe0e0,stroke:#333,stroke-width:1px
+    style F2 fill:#e0f0e0,stroke:#333,stroke-width:1px
+    style G2 fill:#e0f0e0,stroke:#333,stroke-width:1px
 ```
