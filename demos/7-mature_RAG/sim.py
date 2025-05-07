@@ -17,7 +17,7 @@ import time
 
 # Import shared LLM configuration
 from llm_config import get_ollama_client, get_model_name
-from rag_store import add_telemetry_data
+from rag_store import add_telemetry_data, init_stores
 
 # Import helper functions
 from sim_helper_funcs import (
@@ -25,6 +25,11 @@ from sim_helper_funcs import (
     algorithm_make_move, llm_make_move,
     get_last_safe_position, log_batch_of_data
 )
+
+# Initialize RAG stores
+print("Initializing RAG stores...")
+init_stores()
+print("RAG stores initialized successfully!")
 
 # Create FastAPI app
 app = FastAPI()
@@ -507,10 +512,13 @@ def add_log(log_text, metadata=None):
     """
     if metadata is None:
         metadata = {}
-
+    
     # Call add_telemetry_data to store the log in Qdrant
+    # This already creates a unique ID with uuid4()
     telemetry_id = add_telemetry_data(data_text=log_text, metadata=metadata)
     print(f"Telemetry data logged with ID: {telemetry_id}")
+    
+    return telemetry_id
 
 @app.post("/move_agent")
 async def move_agent(request: MoveAgentRequest):

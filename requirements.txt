@@ -5,6 +5,7 @@ Flask==3.1.0
 hf_xet
 httpx==0.28.1
 matplotlib==3.10.1
+nest_asyncio
 numpy==2.2.5
 ollama==0.4.8
 psycopg2-binary==2.9.10

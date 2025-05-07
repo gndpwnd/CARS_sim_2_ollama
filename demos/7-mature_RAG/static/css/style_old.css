@@ -1,4 +1,4 @@
-/* Main layout - updated for 3-panel design */
+/* Main layout (unchanged) */
 body {
     font-family: Arial, sans-serif;
     margin: 0;
@@ -13,8 +13,8 @@ body {
     max-height: 100vh;
 }
 
-/* Feed panel styles - common for both QDRANT and PostgreSQL */
-.feed-panel {
+/* RAG Feed styles (unchanged) */
+#rag-feed {
     flex: 1;
     background-color: #f9f9f9;
     border-right: 1px solid #ddd;
@@ -25,35 +25,14 @@ body {
     overflow: hidden;
 }
 
-.feed-panel h2 {
+#rag-feed h2 {
     margin-top: 0;
     color: #333;
     border-bottom: 1px solid #ddd;
     padding-bottom: 0.5rem;
 }
 
-/* Qdrant specific styling */
-#qdrant-feed {
-    border-right: 1px solid #ddd;
-    background-color: #f8f8ff; /* Slight blue tint to distinguish */
-}
-
-#qdrant-feed h2 {
-    color: #4051b5; /* Bluish theme for Qdrant */
-}
-
-/* PostgreSQL specific styling */
-#postgres-feed {
-    border-right: 1px solid #ddd;
-    background-color: #f8fff8; /* Slight green tint to distinguish */
-}
-
-#postgres-feed h2 {
-    color: #1976d2; /* Different blue for PostgreSQL */
-}
-
-/* Common log container styles */
-.log-container {
+#log-container {
     flex: 1;
     overflow-y: auto;
     padding-right: 0.5rem;
@@ -71,19 +50,6 @@ body {
 
 .log-message:hover {
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-}
-
-/* Different colored borders for different record types */
-.qdrant-record {
-    border-left: 4px solid #4051b5; /* Bluish */
-}
-
-.relationship-record {
-    border-left: 4px solid #00897b; /* Teal */
-}
-
-.message-chain-record {
-    border-left: 4px solid #7cb342; /* Green */
 }
 
 .user-log {
@@ -142,7 +108,7 @@ body {
 }
 
 /* Enhanced loading indicator */
-.loading {
+#loading {
     padding: 0.5rem;
     text-align: center;
     color: #777;
@@ -150,17 +116,17 @@ body {
     transition: all 0.3s ease;
 }
 
-.loading-active {
+#loading.loading-active {
     color: #4285f4;
     font-weight: bold;
 }
 
-.error {
+#loading.error {
     color: #d32f2f;
     animation: none;
 }
 
-/* Chat container styles */
+/* Chat container styles with status enhancements */
 #chat-container {
     flex: 1.5;
     display: flex;
@@ -224,10 +190,6 @@ body {
     border-left: 4px solid #34a853;
 }
 
-.message-info {
-    border-left: 4px solid #4285f4;
-}
-
 .message-success .status-indicator {
     color: #34a853;
 }
@@ -274,7 +236,7 @@ body {
     animation: pulse 1.5s infinite;
 }
 
-/* Form styles */
+/* Form styles (unchanged) */
 #message-form {
     display: flex;
     gap: 0.5rem;
@@ -328,50 +290,18 @@ body {
     border-bottom: none;
 }
 
-/* JSON formatting styles */
-.json-key {
-    color: #7c4dff;
-}
-
-.json-value {
-    color: #0277bd;
-}
-
-.json-string {
-    color: #689f38;
-}
-
-.json-number {
-    color: #f57c00;
-}
-
-.json-boolean {
-    color: #d32f2f;
-}
-
-.json-null {
-    color: #757575;
-    font-style: italic;
-}
-
-.collapsed-payload {
-    cursor: pointer;
-    color: #1976d2;
-    text-decoration: underline;
-}
-
-/* Responsive adjustments */
-@media (max-width: 1200px) {
+/* Responsive adjustments (unchanged) */
+@media (max-width: 768px) {
     #main-container {
         flex-direction: column;
     }
     
-    .feed-panel, #chat-container {
-        height: 33vh;
-        max-height: 33vh;
+    #rag-feed, #chat-container {
+        height: 50vh;
+        max-height: 50vh;
     }
     
-    .feed-panel {
+    #rag-feed {
         border-right: none;
         border-bottom: 1px solid #ddd;
     }

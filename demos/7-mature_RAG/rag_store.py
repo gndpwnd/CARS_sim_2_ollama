@@ -155,7 +155,3 @@ async def initialize_rag():
     await initialize_pipeline_status()
 
     return rag
-
-if __name__ == "__main__":
-    init_stores()
-    print("✅ Hybrid RAG system initialized.")

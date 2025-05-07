@@ -28,34 +28,31 @@ def convert_numpy_coords(obj):
 def log_batch_of_data(agent_histories, add_log, prefix="batch"):
     """
     Log a batch of data from all agents. One log per agent per data point.
-    
     Parameters:
-        agent_histories (dict): Mapping of agent_id to list of data points
-        add_log (function): Function to add logs to the RAG store
-        prefix (str): Prefix used to construct a unique log ID
+    agent_histories (dict): Mapping of agent_id to list of data points
+    add_log (function): Function to add logs to the RAG store
+    prefix (str): Prefix used to construct a unique log ID
     """
     print(f"[LOGGING] Logging batch of data with prefix: {prefix}")
-    
     for agent_id, history in agent_histories.items():
         prev_entry = None
-        
         for i, data in enumerate(history):
             if data == prev_entry:
                 continue
             prev_entry = data
-
-            log_id = f"{prefix}-{agent_id}-{i}"
+            
+            # Create the data without creating a separate log_id
             position = convert_numpy_coords(data['position'])
             comm_quality = convert_numpy_coords(data['communication_quality'])
             jammed = data['jammed']
             timestamp = datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ')
-
+            
             log_text = (
                 f"Agent {agent_id} is at position {position}. "
                 f"Communication quality: {comm_quality}. "
                 f"Status: {'Jammed' if jammed else 'Clear'}."
             )
-
+            
             metadata = {
                 'timestamp': timestamp,
                 'agent_id': agent_id,
@@ -63,12 +60,14 @@ def log_batch_of_data(agent_histories, add_log, prefix="batch"):
                 'position': position,
                 'jammed': jammed,
                 'role': 'system',
-                'source': 'simulation'
+                'source': 'simulation',
+                'batch_index': i,  # Keep track of the sequence if needed
+                'batch_prefix': prefix
             }
-
-            # Correct order of parameters: log_text, metadata, agent_id=None, log_id=None
-            add_log(log_text=log_text, metadata=metadata, log_id=log_id)
-
+            
+            # Simply call add_log with the text and metadata
+            add_log(log_text=log_text, metadata=metadata)
+            
 def round_coord(value):
     """Round coordinates to 3 decimal places"""
     return round(value, 3)

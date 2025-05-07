@@ -12,8 +12,12 @@ from datetime import datetime
 import traceback
 import sys
 import httpx
-from rag_store import add_mcp_message 
+from rag_store import add_mcp_message, init_stores, retrieve_telemetry
 from llm_config import get_ollama_client, get_model_name
+from qdrant_client import QdrantClient
+
+# Initialize stores on startup
+init_stores()
 
 # Database configuration
 DB_CONFIG = {
@@ -23,6 +27,11 @@ DB_CONFIG = {
     "host": "localhost",
     "port": "5432"
 }
+
+# Qdrant configuration
+QDRANT_HOST = "localhost"
+QDRANT_PORT = 6333
+QDRANT_COLLECTION = "telemetry_data"
 
 ollama_client = get_ollama_client()
 LLM_MODEL = get_model_name()
@@ -47,12 +56,13 @@ app.add_middleware(
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Database functions from chatapp
+# Database functions from chatapp - Updated to work with new schema
 def fetch_logs_from_db(limit=None):
     try:
         with psycopg2.connect(**DB_CONFIG) as conn:
             with conn.cursor() as cur:
-                query = "SELECT id, text, metadata, created_at FROM logs"
+                # Query the mcp_message_chains table instead of logs
+                query = "SELECT id, message_chain, created_at FROM mcp_message_chains"
                 if limit:
                     query += f" ORDER BY created_at DESC LIMIT {limit}"
                 else:
@@ -62,21 +72,97 @@ def fetch_logs_from_db(limit=None):
                 
                 logs = []
                 for row in rows:
-                    log_id, content, metadata_json, created_at = row
-                    metadata = json.loads(metadata_json) if isinstance(metadata_json, str) else metadata_json
+                    log_id, message_data, created_at = row
+                    
+                    # Extract text from message_chain based on its structure
+                    if isinstance(message_data, dict):
+                        # If message_data is a dictionary
+                        content = message_data.get("message", message_data.get("command", ""))
+                    else:
+                        # If it's something else, convert to string
+                        content = str(message_data)
+                    
                     logs.append({
                         "log_id": str(log_id),
                         "text": content,
-                        "metadata": metadata,
+                        "metadata": message_data,
                         "created_at": created_at.isoformat()
                     })
                 return logs
     except Exception as e:
         print(f"Error fetching logs from DB: {e}")
+        traceback.print_exc()
         return []
 
+# New endpoints for frontend log viewing
+@app.get("/qdrant_logs")
+async def get_qdrant_logs():
+    """API endpoint to fetch Qdrant logs"""
+    try:
+        client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+        records = client.scroll(
+            collection_name=QDRANT_COLLECTION,
+            limit=100,
+            with_payload=True,
+            with_vectors=False
+        )[0]
+        
+        # Convert Qdrant records to JSON-serializable format
+        serializable_records = []
+        for record in records:
+            serializable_records.append({
+                "id": record.id,
+                "payload": record.payload
+            })
+        
+        return {"records": serializable_records}
+    except Exception as e:
+        print(f"Error fetching Qdrant logs: {e}")
+        traceback.print_exc()
+        return {"error": str(e)}
+
+@app.get("/postgres_logs")
+async def get_postgres_logs():
+    """API endpoint to fetch PostgreSQL logs"""
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        relationships = []
+        message_chains = []
+        
+        try:
+            with conn.cursor() as cur:
+                # Agent Relationships
+                cur.execute("SELECT * FROM agent_relationships ORDER BY created_at DESC LIMIT 50;")
+                relationships = [list(row) for row in cur.fetchall()]  # Convert tuples to lists for JSON serialization
+                
+                # Convert any JSON/JSONB fields to Python dicts
+                for i, row in enumerate(relationships):
+                    # Assuming index 2 is the JSONB field
+                    if isinstance(row[2], psycopg2.extras.Json):
+                        relationships[i][2] = dict(row[2])
+                
+                # MCP Message Chains
+                cur.execute("SELECT * FROM mcp_message_chains ORDER BY created_at DESC LIMIT 50;")
+                message_chains = [list(row) for row in cur.fetchall()]
+                
+                # Convert any JSON/JSONB fields to Python dicts
+                for i, row in enumerate(message_chains):
+                    # Assuming index 1 is the JSONB field
+                    if isinstance(row[1], psycopg2.extras.Json):
+                        message_chains[i][1] = dict(row[1])
+        finally:
+            conn.close()
+        
+        return {
+            "relationships": relationships,
+            "message_chains": message_chains
+        }
+    except Exception as e:
+        print(f"Error fetching PostgreSQL logs: {e}")
+        traceback.print_exc()
+        return {"error": str(e)}
+
 # Define the command to handle agent movement - Updated to use API calls
-# In the move_agent tool function:
 @mcp.tool()
 async def move_agent(agent: str, x: float, y: float) -> dict:
     """Move an agent to specific coordinates"""
@@ -93,10 +179,10 @@ async def move_agent(agent: str, x: float, y: float) -> dict:
             if response.status_code == 200:
                 result = response.json()
                 
-                # Log the movement action to PostgreSQL
+                # Log the movement action using the new RAG function
                 timestamp = datetime.now().isoformat()
-                action_text = f"Moving agent {agent} to coordinates ({x}, {y})"
-
+                
+                # Create a structured message object for the new RAG system
                 add_mcp_message({
                     "agent_id": agent,
                     "position": f"({x}, {y})",
@@ -157,7 +243,7 @@ async def llm_command(request: Request):
 
     print(f"[RECEIVED COMMAND] {command}")
     
-    # Log the user command to PostgreSQL
+    # Log the user command using the new RAG function
     timestamp = datetime.now().isoformat()
     add_mcp_message({
         "role": "user",
@@ -218,6 +304,16 @@ If it's not a movement command, respond with: "Not a movement command"
         raw_response = response['message']['content'].strip()
         print(f"[OLLAMA RESPONSE] {raw_response}")
 
+        # Log the assistant's raw response immediately
+        timestamp = datetime.now().isoformat()
+        add_mcp_message({
+            "role": "assistant",
+            "timestamp": timestamp,
+            "agent_id": "ollama",
+            "source": "response",
+            "response": raw_response  # even if empty
+        })
+
         # Check if response matches our expected movement command format
         if "," in raw_response and len(raw_response.split(",")) == 3:
             agent_name, x_str, y_str = raw_response.split(",")
@@ -255,10 +351,9 @@ If it's not a movement command, respond with: "Not a movement command"
     except Exception as e:
         print(f"[ERROR] {e}")
         traceback.print_exc()
-
         
-        # Log the error to PostgreSQL
-        add_mcp_message(f"Error processing command: {e}", {
+        # Log the error using the new RAG function
+        add_mcp_message({
             "role": "system",
             "timestamp": datetime.now().isoformat(),
             "source": "command",
@@ -285,7 +380,7 @@ def format_live_agent_data(live_data):
     
     return "\n".join(formatted)
 
-# Chat endpoint from Flask app now in FastAPI - Updated to incorporate simulation status
+# Chat endpoint from Flask app now in FastAPI - Updated to incorporate simulation status and new RAG
 @app.post("/chat")
 async def chat(request: Request):
     try:
@@ -320,15 +415,25 @@ async def chat(request: Request):
         simulation_context = []
         for log in logs_sorted:
             metadata = log.get("metadata", {})
-            agent_id = metadata.get("agent_id", "Unknown")
-            position = metadata.get("position", "Unknown")
-            jammed = "JAMMED" if metadata.get("jammed", False) else "CLEAR"
-            timestamp = metadata.get("timestamp", "Unknown time")
-            text = log.get("text", "")
             
-            # Create rich context entries
-            entry = f"LOG: Agent {agent_id} at position {position} is {jammed} at {timestamp}: {text}"
-            simulation_context.append(entry)
+            # Handle both old and new metadata formats
+            if isinstance(metadata, dict):
+                agent_id = metadata.get("agent_id", "Unknown")
+                position = metadata.get("position", "Unknown")
+                jammed = "JAMMED" if metadata.get("jammed", False) else "CLEAR"
+                timestamp = metadata.get("timestamp", "Unknown time")
+                
+                # Extract message or command based on source
+                if metadata.get("source") == "command":
+                    text = metadata.get("command", "")
+                elif metadata.get("source") == "chat":
+                    text = metadata.get("message", "")
+                else:
+                    text = log.get("text", "")
+                
+                # Create rich context entries
+                entry = f"LOG: Agent {agent_id} at position {position} is {jammed} at {timestamp}: {text}"
+                simulation_context.append(entry)
         
         # Add current simulation status
         if sim_status:
@@ -343,7 +448,10 @@ async def chat(request: Request):
                 for agent_id, data in agent_positions.items():
                     jammed_status = "JAMMED" if data.get("jammed", False) else "CLEAR"
                     comm_quality = data.get("communication_quality", 0)
-                    simulation_context.append(f"  {agent_id}: Position ({data.get('x', 0)}, {data.get('y', 0)}) - {jammed_status} - Comm Quality: {comm_quality:.2f}")
+                    position = data.get("position", {})
+                    x = position.get("x", 0) if isinstance(position, dict) else 0
+                    y = position.get("y", 0) if isinstance(position, dict) else 0
+                    simulation_context.append(f"  {agent_id}: Position ({x}, {y}) - {jammed_status} - Comm Quality: {comm_quality:.2f}")
         
         # Format full context
         context_text = "\n".join(simulation_context)
@@ -353,7 +461,8 @@ async def chat(request: Request):
             metadata = log.get("metadata", {})
             if metadata.get("role") == "user" and metadata.get("source") == "command":
                 recent_time = metadata.get("timestamp")
-                recent_text = log.get("text", "")
+                # Get the command from the new metadata structure
+                recent_text = metadata.get("command", "")
                 if recent_time and (datetime.now() - datetime.fromisoformat(recent_time)).total_seconds() < 10:
                     if recent_text.lower() == user_message.lower():
                         print(f"Detected duplicate command processing: '{user_message}'")
@@ -379,26 +488,27 @@ Keep your responses concise and focused on answering the user's questions.
         
         # Debug response
         print("\n===== LLM RESPONSE =====")
-        print(f"Model: {response.model}")
+        print(f"Model: {LLM_MODEL}")
         print("Content:", end=" ")
-        if hasattr(response, 'message') and response.message:
-            print(response.message.content)
+        if 'message' in response and response['message']:
+            print(response['message']['content'])
         else:
             print("NO CONTENT")
         print("========================\n")
         
         # Extract response safely
         ollama_response = ""
-        if hasattr(response, 'message') and response.message:
-            if hasattr(response.message, 'content') and response.message.content:
-                ollama_response = response.message.content
+        if 'message' in response and response['message']:
+            if 'content' in response['message'] and response['message']['content']:
+                ollama_response = response['message']['content']
         
         # Ensure we got some response
         if not ollama_response.strip():
             ollama_response = "I'm unable to provide an answer based on the available logs and simulation status."
         
-        # Log interaction
+        # Log interaction with the new RAG system
         timestamp = datetime.now().isoformat()
+        
         # Log user message
         add_mcp_message({
             "role": "user",
@@ -471,17 +581,44 @@ async def continue_simulation():
     except Exception as e:
         return {"error": str(e)}
 
-# LOG endpoints
+# LOG endpoints - Updated to work with the new schema
 @app.get("/logs")
 async def get_logs():
     try:
         logs = fetch_logs_from_db(limit=100)
+        
+        # Format logs for frontend compatibility
+        formatted_logs = []
+        for log in logs:
+            metadata = log.get("metadata", {})
+            
+            # Handle both message and command based on source
+            text = ""
+            if isinstance(metadata, dict):
+                if metadata.get("source") == "command":
+                    text = metadata.get("command", "")
+                elif metadata.get("source") == "chat":
+                    text = metadata.get("message", "")
+                elif "action" in metadata:
+                    text = f"Action: {metadata.get('action')} for {metadata.get('agent_id')}"
+                else:
+                    # Fallback if there's no specific text field
+                    text = log.get("text", "")
+            
+            formatted_logs.append({
+                "log_id": log.get("log_id"),
+                "text": text,
+                "metadata": metadata,
+                "created_at": log.get("created_at")
+            })
+        
         return {
-            "logs": logs,
+            "logs": formatted_logs,
             "has_more": False  # You could paginate in future
         }
     except Exception as e:
         print(f"Error in /logs route: {e}")
+        traceback.print_exc()
         return {"error": f"Internal server error: {str(e)}"}
 
 @app.get("/log_count")
