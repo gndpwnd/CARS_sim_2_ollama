@@ -1,44 +1,4 @@
-> [Mermaid for Markdown](https://github.com/mermaid-js/mermaid)
-
-> using llama3.3:70b-instruct-q5_K_M
-
-## Setup LightRAG `from source` locally
-
-Make sure LightRAG is local (added as a submodule in CARS_SIM_2_OLLAMA)
-
-```bash
-git submodule update --init --recursive  
-```
-
-if want to update LightRAG submodule to use latest upstream LightRAG repo version: 
-
-```bash
-git submodule update --remote --recursive
-```
-
-Install LightRAG Core
-
-```bash
-cd demos/7-mature_RAG/LightRAG; pip install -e .
-```
-
-OR Install LightRAG Core + API
-
-```bash
-cd demos/7-mature_RAG/LightRAG; pip install -e ".[api]"
-```
-
-### Run the Simulation and Chatapp
-
-```
-docker compose down -v; sudo chown -R $USER:$USER ./pg_data; sudo chown -R $USER:$USER ./qdrant_data; rm -rf ./pg_data ./qdrant_data; docker compose up -d; python sim.py
-```
-
-```
-python3 mcp_chatapp.py
-```
-
-# Implementing Mature Hybrid RAG - TLDR
+# Implementing Hybrid Data Solution - TLDR
 
 Pair PostgreSQL (structured metadata) with Qdrant (vector/geo-data) to balance relational integrity and high-speed similarity search
 
@@ -145,14 +105,6 @@ graph LR
            type: Utilization
            averageUtilization: 70
      ```
-
-### **Data Flow at Scale**
-| Layer                | 1k Agents      | 10k Agents     | 100k Agents    |
-|----------------------|----------------|----------------|----------------|
-| Telemetry Ingest     | 5k events/sec  | 50k events/sec | 500k events/sec|
-| MCP Messages         | 200 msg/sec    | 2k msg/sec     | 20k msg/sec    |
-| Query Throughput     | 150 qps        | 1.5k qps       | 15k qps        |
-| Storage Growth       | 50GB/month     | 500GB/month    | 5TB/month      |
 
 ### **Failure Handling**
 1. **Qdrant:**  
