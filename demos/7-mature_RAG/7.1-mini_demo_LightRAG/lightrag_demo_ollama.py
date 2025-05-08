@@ -1,3 +1,8 @@
+# stop ollama serve on gpu, start ollama serve on vega, then pull models
+# ollama pull gemma2:2b
+# ollama pull nomic-embed-text
+# then go back to ollama serve on gpus
+
 import asyncio
 import nest_asyncio
 
@@ -34,7 +39,7 @@ async def initialize_rag():
             embedding_dim=768,
             max_token_size=8192,
             func=lambda texts: ollama_embed(
-                texts, embed_model="nomic-embed-text", host="http://localhost:11434"
+                texts, embed_model="nomic-embed-text:latest", host="http://localhost:11434"
             ),
         ),
     )

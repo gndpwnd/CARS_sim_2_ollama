@@ -1,3 +1,5 @@
+# cd demos/7-mature_RAG/LightRAG; pip install -e .
+# cd demos/7-mature_RAG/LightRAG; pip install -e ".[api]"
 faiss-cpu
 fastapi==0.115.12
 fastmcp==2.2.6
@@ -15,3 +17,6 @@ qdrant-client
 Requests==2.32.3
 sentence_transformers==4.1.0
 uvicorn==0.34.2
+wcwidth
+jwt
+aiofiles

@@ -12,3 +12,7 @@ host-share
 **/pg_data/
 **/qdrant_data/
 **/LightRAG_hybrid_rag/
+**/rag_storage/
+**lightrag.log
+**/dickens/
+**/inputs/

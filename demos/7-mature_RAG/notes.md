@@ -15,3 +15,5 @@ I just updated my RAG to a hybrid model - qdrant for telemetry, postgreSQL for c
 now I want to make sure to record the LLM response in RAG and then display in chatapp
 
 
+LightRAG is not being implemented, how to actually use lightRAG?
+
