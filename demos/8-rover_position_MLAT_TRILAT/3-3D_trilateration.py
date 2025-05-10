@@ -9,7 +9,7 @@ from matplotlib.widgets import Button, TextBox, Slider, CheckButtons
 from mpl_toolkits.mplot3d import Axes3D
 import random
 
-plt.style.use('dark_background')
+# plt.style.use('dark_background')
 
 # Constants
 GAMMA = 1.4
