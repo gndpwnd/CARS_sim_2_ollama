@@ -1,3 +1,7 @@
+# 2-2D_multilateration.py
+
+# Comprehensive 2D multilateration using known distances from rover
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button, TextBox

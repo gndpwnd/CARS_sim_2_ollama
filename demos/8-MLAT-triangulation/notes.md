@@ -50,3 +50,26 @@ Warning: Could not place all drones above hill after max attempts. simply take t
 
 
 ok now the rover should be at the point of most intersections, account for this in the code
+
+
+
+
+given the following code, if the error is above 0, then add functionality to check for if the following situations have occurred:
+
+- Coincident Drone Positions:
+If two or more drones are positioned in such a way that they are equidistant or very close to each other, they may generate identical or nearly identical distances to the rover. This can lead to numerical instability in the localization algorithm. Specifically, when the positions of drones are nearly identical, the optimization algorithm (least_squares) may struggle because there is insufficient diversity in the data for accurate triangulation or multilateration.
+
+- Singular or Near-Singular Matrix in Least Squares:
+In the case of multilateration (where distances from drones are used to estimate the rover's position), if the drone positions are collinear or too close, the optimization problem becomes nearly degenerate. The Jacobian matrix for the least squares problem may become singular or near-singular, causing the algorithm to fail or return incorrect results. This can happen when drone positions are highly symmetric or aligned in a way that the problem lacks sufficient independent constraints to solve for the rover's position.
+
+- Sphere-Sphere Intersection Issues:
+Your sphere_sphere_intersection function attempts to find the intersection between spheres, which assumes that two spheres will intersect at a set of points (often a circle). However, when drone positions are too close to each other or identical, the intersection points may not be well-defined or could overlap significantly. This leads to a problem when trying to determine a valid intersection. As the error message suggests, this happens when no valid intersection is found, and the system falls back to multilateration.
+
+I want to add a constraint to the simulation where no drones can be within MIN_DRONE_SEPARATION = 1 where no drone can be within 1 unit radius of another drone.
+
+
+
+I have the following code. I want to add a new constraint so that the drones not only are not close to each other, but also are not equidistant from the rover. I want to add a global variable of MIN_DRONE_SAME_DIST_TO_ROVER = 2. where no drone can be at a distance to the rover within 2 meters or units of another drones distance. to apply this when plotting drones, follow the same methodology of the function to check if a drone's position will be too close to another drone. the next drone's position will be dependent on the previously plotted drones so it decreases the computational load. as you plot drones following constraints, the next drone cannot be within MIN_DRONE_SEPARATION of any other drone and cannot be at a distance to the rover that is within MIN_DRONE_SAME_DIST_TO_ROVER of any other drone's distance to the rover.
+
+
+now I want to refactor the code to where the rover's position is where the point of intersection of the most intersections of the circular intersections of spheres occur. so there exists where the spheres intersect each other which produce cirucular planes. then I want to get the point where the most circular planes intersect. this is the rover postion.

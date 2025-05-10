@@ -1,4 +1,6 @@
-# Multilateration
+# 1-2_drones.py 
+
+# Basic multilateration using known distances from rover
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button, Slider
