@@ -49,3 +49,4 @@ Warning: Could not place all drones above hill after max attempts. simply take t
 - i want to have a slider to be able to change the angle of the hill plane between 0 and 90 degrees. but don't update the drone positions based on this slider, simply update the hill plane relative to the rover. then when the user clicks the drones positions button, take the new angle of the hill plane into consideration
 
 
+ok now the rover should be at the point of most intersections, account for this in the code

@@ -180,6 +180,9 @@ def update_plot():
     if not drone_positions or not real_rover_pos:
         print("Plot skipped: positions not initialized.")
         return
+        
+    # Store current view angle before clearing
+    elev, azim = ax.elev, ax.azim
 
     distances = [calculate_distance(drone, real_rover_pos) for drone in drone_positions]
     estimated_rover_pos = localize_rover_multilateration(drone_positions, distances)
@@ -192,6 +195,9 @@ def update_plot():
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.set_zlabel('Z')
+    
+    # Restore view angle after clearing
+    ax.view_init(elev=elev, azim=azim)
 
     # Plot hill plane
     plot_hill_plane()
@@ -235,6 +241,12 @@ def update_plot():
         ax.text(-9, -9, 11, f'Error: {error:.3f} m', fontsize=10)
 
     ax.legend()
+    
+    # Add navigation instructions as static text instead of 3D text
+    props = dict(boxstyle='round', facecolor='wheat', alpha=0.3)
+    ax.text2D(0.02, 0.98, 'Mouse Controls:\n• Left click + drag: Rotate view\n• Right click + drag: Zoom in/out\n• Middle click + drag: Pan view', 
+             transform=ax.transAxes, fontsize=9, verticalalignment='top', bbox=props)
+    
     plt.draw()
 
 def plot_hill_plane():
@@ -253,6 +265,11 @@ def plot_hill_plane():
 fig = plt.figure(figsize=(12, 10))
 ax = fig.add_subplot(111, projection='3d')
 plt.subplots_adjust(bottom=0.3, left=0.2)
+
+# Enable mouse interaction with improved settings
+ax.mouse_init()  # Initialize mouse rotation capability
+# Set initial view angle for better visualization
+ax.view_init(elev=30, azim=45)  # 30° elevation, 45° azimuth
 
 # Buttons
 btn_ax1 = plt.axes([0.2, 0.05, 0.2, 0.05])
