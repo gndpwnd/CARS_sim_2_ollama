@@ -3,7 +3,15 @@
 > https://en.wikipedia.org/wiki/Trilateration
 > https://en.wikipedia.org/wiki/True-range_multilateration
 
-# README Summary for Drone-Based Multilateration and Trilateration Scripts
+**Run the demos from the root directory, make sure to install dependencies**
+
+```bash
+python demos/8-rover_position_MLAT_TRILAT/1-2_drones.py
+python demos/8-rover_position_MLAT_TRILAT/2-2D_multilateration.py
+python demos/8-rover_position_MLAT_TRILAT/3-3D_trilateration.py
+```
+
+# Summary for Drone-Based Multilateration and Trilateration Scripts
 
 ## Drone-based Multilateration and Trilateration Simulation
 
@@ -42,9 +50,9 @@ All three scripts implement trilateration/multilateration by computing intersect
 This script demonstrates the simplest case: two fixed drones in a plane measure their distances to a stationary target (e.g. a ground rover). Each measured distance defines a circle centered on a drone. The target must lie on both circles, so its potential positions are the intersection points of the circles.
 
 - **Mathematical Computation**: Uses the Euclidean distance formula  
-  ```math
+  $$
   d_i = \sqrt{(x - x_i)^2 + (y - y_i)^2}
-  ```  
+  $$  
   for each drone *i*. The script solves the two circle equations simultaneously by subtracting one from the other to get a linear equation, then back-substituting.
 
 - **Geometry outcomes**:
@@ -62,26 +70,26 @@ This script demonstrates the simplest case: two fixed drones in a plane measure 
 - **Error Estimation**:
   - With two drones, location may be ambiguous.
   - Estimated error can be shown (e.g., between intersection and known target).
-  - Residuals may be computed:
-    ```math
+  - Residuals may be computed:  
+    $$
     \sqrt{(x - x_i)^2 + (y - y_i)^2} - d_i
-    ```
+    $$
 
 ---
 
-## `2-2D_multilateration.py`: General 2D Multilateration (Multiple Drones)
+## `2-2D_multilateration.py`: General 2D Multilateration (Need Three or More Drones)
 
 This script generalizes to **N ≥ 3** drones. Each drone (xᵢ, yᵢ) measures a distance dᵢ. Three or more drones allow unique localization (excluding degenerate cases).
 
 - **Mathematical Computation**:  
-  System of nonlinear equations:
-  ```math
+  System of nonlinear equations:  
+  $$
   (x - x_i)^2 + (y - y_i)^2 = d_i^2, \quad i = 1,\dots,N
-  ```  
-  Reformulated as a nonlinear least-squares problem:
-  ```math
+  $$  
+  Reformulated as a nonlinear least-squares problem:  
+  $$
   \min_{x,y} \sum_{i=1}^N \left( \sqrt{(x - x_i)^2 + (y - y_i)^2} - d_i \right)^2
-  ```  
+  $$  
   Solved via iterative methods (Gauss–Newton, Levenberg–Marquardt).
 
 - **Assumptions**:
@@ -98,19 +106,19 @@ This script generalizes to **N ≥ 3** drones. Each drone (xᵢ, yᵢ) measures 
 
 ---
 
-## `3-3D_multilateration.py`: 3D Multilateration (Four or More Drones)
+## `3-3D_multilateration.py`: 3D Multilateration (Need Four or More Drones)
 
 This script extends the problem into **3D space**. Drones are located at known (xᵢ, yᵢ, zᵢ) positions and measure distances dᵢ to an unknown target location (x, y, z). Each distance defines a **sphere**. The intersection of these spheres determines the target’s position.
 
 - **Mathematical Computation**:  
-  Each equation is of the form:
-  ```math
+  Each equation is of the form:  
+  $$
   (x - x_i)^2 + (y - y_i)^2 + (z - z_i)^2 = d_i^2
-  ```  
-  With **4 or more** equations (drones), the system is overdetermined and solved via nonlinear least-squares:
-  ```math
+  $$  
+  With **4 or more** equations (drones), the system is overdetermined and solved via nonlinear least-squares:  
+  $$
   \min_{x,y,z} \sum_{i=1}^N \left( \sqrt{(x - x_i)^2 + (y - y_i)^2 + (z - z_i)^2} - d_i \right)^2
-  ```
+  $$
 
 - **Geometry Notes**:
   - With 3 spheres, there may be 0, 1, or 2 intersections.
@@ -127,8 +135,6 @@ This script extends the problem into **3D space**. Drones are located at known (
   - Add noise to simulate real-world conditions.
   - Display estimated vs. true target position.
   - Optional error statistics:  
-    ```math
-    \text{RMSE} = \sqrt{ \frac{1}{N} \sum_{i=1}^N ( \hat{d}_i - d_i )^2 }
-    ```
-
----
+    $$
+    \text{RMSE} = \sqrt{ \frac{1}{N} \sum_{i=1}^N \left( \text{estimated}_i - \text{true}_i \right)^2 }
+    $$

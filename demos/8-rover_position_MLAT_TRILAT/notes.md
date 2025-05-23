@@ -73,3 +73,6 @@ I have the following code. I want to add a new constraint so that the drones not
 
 
 now I want to refactor the code to where the rover's position is where the point of intersection of the most intersections of the circular intersections of spheres occur. so there exists where the spheres intersect each other which produce cirucular planes. then I want to get the point where the most circular planes intersect. this is the rover postion.
+
+
+I want to take the following markdown and properly render equations using mathjax js, please convert all equations to this so that they will properly render on github. put it all into a markdown code block so i can copy it, also beware of how you add code blocks as this might break the overall markdown code block.
