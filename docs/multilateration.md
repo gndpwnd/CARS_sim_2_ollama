@@ -46,15 +46,7 @@ The mathematical foundation of 2D multilateration involves creating circles cent
 
 For each known position $(x_i, y_i)$ and measured distance $d_i$ to the unknown position $(x, y)$:
 
-  
-
-$$
-
-(x - x_i)^2 + (y - y_i)^2 = d_i^2
-
-$$
-
-  
+  $$(x - x_i)^2 + (y - y_i)^2 = d_i^2$$  
 
 With three or more known positions, we generate multiple circles. The unknown position is located at the point where the maximum number of circle intersections occur.
 
@@ -72,11 +64,7 @@ The system of equations can be solved by:
 
 For three circles, the mathematical solution involves solving the system:
 
-  
-
-$$
-
-\begin{align}
+  $$\begin{align}
 
 (x - x_1)^2 + (y - y_1)^2 &= d_1^2 \\
 
@@ -84,11 +72,7 @@ $$
 
 (x - x_3)^2 + (y - y_3)^2 &= d_3^2
 
-\end{align}
-
-$$
-
-  
+\end{align}$$  
 
 ### Circle-Circle Intersection Calculations
 
@@ -98,15 +82,7 @@ To find intersection points between two circles with centers $(x_1, y_1)$ and $(
 
   
 
-**Step 1**: Calculate the distance between centers:
-
-$$
-
-d = \sqrt{(x_2 - x_1)^2 + (y_2 - y_1)^2}
-
-$$
-
-  
+**Step 1**: Calculate the distance between centers:$$d = \sqrt{(x_2 - x_1)^2 + (y_2 - y_1)^2}$$  
 
 **Step 2**: Check for intersection conditions:
 
@@ -118,69 +94,14 @@ $$
 
   
 
-**Step 3**: Calculate intersection points when they exist:
+**Step 3**: Calculate intersection points when they exist:$$a = \frac{r_1^2 - r_2^2 + d^2}{2d}$$  $$h = \sqrt{r_1^2 - a^2}$$  
 
-$$
+**Step 4**: Find the midpoint between intersections:$$x_m = x_1 + a \cdot \frac{x_2 - x_1}{d}$$
+$$y_m = y_1 + a \cdot \frac{y_2 - y_1}{d}$$  
 
-a = \frac{r_1^2 - r_2^2 + d^2}{2d}
-
-$$
-
-  
-
-$$
-
-h = \sqrt{r_1^2 - a^2}
-
-$$
-
-  
-
-**Step 4**: Find the midpoint between intersections:
-
-$$
-
-x_m = x_1 + a \cdot \frac{x_2 - x_1}{d}
-
-$$
-
-$$
-
-y_m = y_1 + a \cdot \frac{y_2 - y_1}{d}
-
-$$
-
-  
-
-**Step 5**: Calculate the two intersection points:
-
-$$
-
-x_{int1} = x_m + h \cdot \frac{y_1 - y_2}{d}
-
-$$
-
-$$
-
-y_{int1} = y_m + h \cdot \frac{x_2 - x_1}{d}
-
-$$
-
-  
-
-$$
-
-x_{int2} = x_m - h \cdot \frac{y_1 - y_2}{d}
-
-$$
-
-$$
-
-y_{int2} = y_m - h \cdot \frac{x_2 - x_1}{d}
-
-$$
-
-  
+**Step 5**: Calculate the two intersection points:$$x_{int1} = x_m + h \cdot \frac{y_1 - y_2}{d}$$
+$$y_{int1} = y_m + h \cdot \frac{x_2 - x_1}{d}$$  $$x_{int2} = x_m - h \cdot \frac{y_1 - y_2}{d}$$
+$$y_{int2} = y_m - h \cdot \frac{x_2 - x_1}{d}$$  
 
 ### Finding the Point of Maximum Intersections
 
@@ -196,15 +117,7 @@ For $n$ circles, compute intersections for all $\binom{n}{2}$ circle pairs, crea
 
 For each candidate point $(x_c, y_c)$, count how many circles it lies on within a tolerance $\epsilon$:
 
-  
-
-$$
-
-\text{count} = \sum_{i=1}^{n} \begin{cases} 1 & \text{if } |\sqrt{(x_c - x_i)^2 + (y_c - y_i)^2} - d_i| \leq \epsilon \\ 0 & \text{otherwise} \end{cases}
-
-$$
-
-  
+  $$\text{count} = \sum_{i=1}^{n} \begin{cases} 1 & \text{if } |\sqrt{(x_c - x_i)^2 + (y_c - y_i)^2} - d_i| \leq \epsilon \\ 0 & \text{otherwise} \end{cases}$$  
 
 **Step 3**: Select optimal point
 
@@ -251,15 +164,7 @@ Three-dimensional multilateration uses spheres instead of circles, with the unkn
 
 For each known position $(x_i, y_i, z_i)$ and measured distance $d_i$:
 
-  
-
-$$
-
-(x - x_i)^2 + (y - y_i)^2 + (z - z_i)^2 = d_i^2
-
-$$
-
-  
+  $$(x - x_i)^2 + (y - y_i)^2 + (z - z_i)^2 = d_i^2$$  
 
 The solution process involves:
 
@@ -285,39 +190,15 @@ When two spheres intersect, they create a circular intersection. For spheres cen
 
 The intersection circle lies on a plane perpendicular to the line connecting the sphere centers. The circle's center is located at:
 
-  
+  $$\mathbf{c} = \mathbf{p_1} + a \cdot \frac{\mathbf{p_2} - \mathbf{p_1}}{|\mathbf{p_2} - \mathbf{p_1}|}$$  
 
-$$
-
-\mathbf{c} = \mathbf{p_1} + a \cdot \frac{\mathbf{p_2} - \mathbf{p_1}}{|\mathbf{p_2} - \mathbf{p_1}|}
-
-$$
-
-  
-
-where:
-
-$$
-
-a = \frac{r_1^2 - r_2^2 + d^2}{2d}
-
-$$
-
-  
+where:$$a = \frac{r_1^2 - r_2^2 + d^2}{2d}$$  
 
 and $d$ is the distance between sphere centers.
 
   
 
-The intersection circle's radius is:
-
-$$
-
-h = \sqrt{r_1^2 - a^2}
-
-$$
-
-  
+The intersection circle's radius is:$$h = \sqrt{r_1^2 - a^2}$$  
 
 With four or more spheres, multiple intersection circles are generated, and their convergence point represents the unknown position. This is typically solved using least-squares optimization to find the point that minimizes the sum of squared distances to all intersection planes.
 
@@ -339,15 +220,7 @@ To find the circular intersection between two spheres:
 
   
 
-**Step 2**: Calculate distance between centers:
-
-$$
-
-d = |\mathbf{c_2} - \mathbf{c_1}| = \sqrt{(x_2-x_1)^2 + (y_2-y_1)^2 + (z_2-z_1)^2}
-
-$$
-
-  
+**Step 2**: Calculate distance between centers:$$d = |\mathbf{c_2} - \mathbf{c_1}| = \sqrt{(x_2-x_1)^2 + (y_2-y_1)^2 + (z_2-z_1)^2}$$  
 
 **Step 3**: Check intersection conditions:
 
@@ -359,33 +232,9 @@ $$
 
   
 
-**Step 4**: Calculate intersection circle parameters:
+**Step 4**: Calculate intersection circle parameters:$$a = \frac{r_1^2 - r_2^2 + d^2}{2d}$$  $$h = \sqrt{r_1^2 - a^2}$$  
 
-$$
-
-a = \frac{r_1^2 - r_2^2 + d^2}{2d}
-
-$$
-
-  
-
-$$
-
-h = \sqrt{r_1^2 - a^2}
-
-$$
-
-  
-
-**Step 5**: Find intersection circle center:
-
-$$
-
-\mathbf{p} = \mathbf{c_1} + a \cdot \frac{\mathbf{c_2} - \mathbf{c_1}}{d}
-
-$$
-
-  
+**Step 5**: Find intersection circle center:$$\mathbf{p} = \mathbf{c_1} + a \cdot \frac{\mathbf{c_2} - \mathbf{c_1}}{d}$$  
 
 **Step 6**: Define intersection plane
 
@@ -411,25 +260,13 @@ For $n$ spheres, compute intersection circles for all $\binom{n}{2}$ sphere pair
 
 **Step 2**: Convert circles to plane equations
 
-Each intersection circle defines a plane equation:
-
-$$
-
-n_x(x - p_x) + n_y(y - p_y) + n_z(z - p_z) = 0
-
-$$
-
-  
+Each intersection circle defines a plane equation:$$n_x(x - p_x) + n_y(y - p_y) + n_z(z - p_z) = 0$$  
 
 **Step 3**: Solve system of plane equations using least squares
 
 Construct the overdetermined system $\mathbf{A}\mathbf{x} = \mathbf{b}$:
 
-  
-
-$$
-
-\mathbf{A} = \begin{bmatrix}
+  $$\mathbf{A} = \begin{bmatrix}
 
 n_{1x} & n_{1y} & n_{1z} \\
 
@@ -449,21 +286,9 @@ n_{mx} & n_{my} & n_{mz}
 
 \mathbf{n_m} \cdot \mathbf{p_m}
 
-\end{bmatrix}
+\end{bmatrix}$$  
 
-$$
-
-  
-
-**Step 4**: Solve for unknown position:
-
-$$
-
-\mathbf{x} = (\mathbf{A}^T\mathbf{A})^{-1}\mathbf{A}^T\mathbf{b}
-
-$$
-
-  
+**Step 4**: Solve for unknown position:$$\mathbf{x} = (\mathbf{A}^T\mathbf{A})^{-1}\mathbf{A}^T\mathbf{b}$$  
 
 **Alternative Method: Point-Circle Distance Minimization**
 
@@ -473,25 +298,9 @@ $$
 
 For each intersection circle $i$ with center $\mathbf{p_i}$, normal $\mathbf{n_i}$, and radius $h_i$:
 
-  
+  $$f_i(\mathbf{x}) = \left| |\mathbf{x} - \mathbf{p_i} - (\mathbf{n_i} \cdot (\mathbf{x} - \mathbf{p_i}))\mathbf{n_i}| - h_i \right|^2$$  
 
-$$
-
-f_i(\mathbf{x}) = \left| |\mathbf{x} - \mathbf{p_i} - (\mathbf{n_i} \cdot (\mathbf{x} - \mathbf{p_i}))\mathbf{n_i}| - h_i \right|^2
-
-$$
-
-  
-
-**Step 2**: Minimize total error:
-
-$$
-
-\mathbf{x}_{optimal} = \arg\min_{\mathbf{x}} \sum_{i=1}^{m} f_i(\mathbf{x})
-
-$$
-
-  
+**Step 2**: Minimize total error:$$\mathbf{x}_{optimal} = \arg\min_{\mathbf{x}} \sum_{i=1}^{m} f_i(\mathbf{x})$$  
 
 This minimization finds the point that lies closest to all intersection circles simultaneously.
 

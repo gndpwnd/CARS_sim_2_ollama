@@ -19,12 +19,7 @@ The distance between two radio transceivers is determined using the fundamental 
   
 
 **Basic Time-of-Flight Equation:**
-
-$$
-d = c \cdot t
-$$
-
-  
+$$d = c \cdot t$$  
 
 Where:
 
@@ -41,14 +36,8 @@ Where:
 For practical implementation using send-acknowledge protocols:
 
   
-
-$$
-
-d = (c \cdot Δt) / 2
-
-$$
-
-  
+$$d = (c \cdot Δt) / 2
+$$  
 
 Where:
 
@@ -67,12 +56,7 @@ Where:
   
 
 **Signal Propagation in Air:**
-
-$$
-c_{\text{air}} = \frac{c}{n_{\text{air}}} \approx 2.997 \cdot 10^8 \ \text{m/s}
-$$
-
-
+$$c_{\text{air}} = \frac{c}{n_{\text{air}}} \approx 2.997 \cdot 10^8 \ \text{m/s}$$
 Where $n_air ≈ 1.0003$ (refractive index of air at standard conditions)
 
   
@@ -98,22 +82,11 @@ Where $n_air ≈ 1.0003$ (refractive index of air at standard conditions)
 Any error in time measurement directly translates to distance error:
 
   
-
-$$
-
-Δd = c \cdot Δt
-
-$$
-
-  
+$$Δd = c \cdot Δt
+$$  
 
 **For round-trip measurements:**
-
-$$
-\Delta d = \frac{c \cdot \sigma_{t}}{2}
-$$
-
-
+$$\Delta d = \frac{c \cdot \sigma_{t}}{2}$$
   
 
 Where $\sigma_{t}$ is the uncertainty in round-trip time measurement.
@@ -125,20 +98,10 @@ Where $\sigma_{t}$ is the uncertainty in round-trip time measurement.
   
 
 **Required Time Resolution for Target Accuracy:**
-
-$$
-\Delta t = \frac{\Delta d}{c}
-$$
-
-
+$$\Delta t = \frac{\Delta d}{c}$$
 
 **Required Clock Frequency:**
-
-$$
-f_{\text{clock}} = \frac{1}{\Delta t} = \frac{c}{\Delta d}
-$$
-
-
+$$f_{\text{clock}} = \frac{1}{\Delta t} = \frac{c}{\Delta d}$$
   
 
 ### 2.3 System-Level Position Accuracy
@@ -150,20 +113,12 @@ For a multilateration system with $n$ agents, each with distance measurement acc
   
 
 **Geometric Dilution of Precision (GDOP):**
-
-$$
-\sigma_{\text{position}} = \text{GDOP} \cdot \sigma_d
-$$
-
+$$\sigma_{\text{position}} = \text{GDOP} \cdot \sigma_d$$
 
   
 
 **For well-conditioned geometry (4+ agents):**
-
-$$
-\sigma_{\text{position}} \approx \sqrt{\frac{\sigma_d^2}{n}} \times k_{\text{geometry}}
-$$
-
+$$\sigma_{\text{position}} \approx \sqrt{\frac{\sigma_d^2}{n}} \times k_{\text{geometry}}$$
 
   
 
@@ -172,11 +127,7 @@ Where $k_{\text{geometry}}$ typically ranges from 1.2 to 2.5 depending on agent 
   
 
 **Volume Uncertainty (for 3D positioning):**
-
-$$
-\sigma_{\text{V}} = \frac{4}{3} \pi \cdot \sigma_{\text{position}}^3
-$$
-
+$$\sigma_{\text{V}} = \frac{4}{3} \pi \cdot \sigma_{\text{position}}^3$$
 
   
 
@@ -209,33 +160,19 @@ $$
   
 
 **Required distance accuracy:**
+$$\sigma_d = \frac{\sigma_{\text{position}}}{\text{GDOP} \times \sqrt{\frac{1}{n}}}
+\\[8pt]$$
 
-$$
-\sigma_d = \frac{\sigma_{\text{position}}}{\text{GDOP} \times \sqrt{\frac{1}{n}}}
-\\[8pt]
-$$
-
-$$
-\sigma_d = \frac{0.134}{1.22 \times 0.5} = 0.22 \text{ m}
-$$
-
+$$\sigma_d = \frac{0.134}{1.22 \times 0.5} = 0.22 \text{ m}$$
 
   
 
 **Required clock precision:**
-
-$$
-\Delta t = \frac{\sigma_d}{c} = \frac{0.22}{2.998 \times 10^{8}} = 7.34 \times 10^{-10} \text{ s} = 734 \text{ ps}
-$$
-
+$$\Delta t = \frac{\sigma_d}{c} = \frac{0.22}{2.998 \times 10^{8}} = 7.34 \times 10^{-10} \text{ s} = 734 \text{ ps}$$
   
 
 **Required clock frequency:**
-
-$$
-f_{\text{clock}} \geq \frac{1}{\Delta t} = 1.36 \times 10^{9} \text{ Hz} \approx 1.4 \text{ GHz}
-$$
-
+$$f_{\text{clock}} \geq \frac{1}{\Delta t} = 1.36 \times 10^{9} \text{ Hz} \approx 1.4 \text{ GHz}$$
 
 ### 3.2 Radio Signal Frequency Constraints
 
@@ -244,46 +181,22 @@ $$
 **Nyquist Sampling Criterion:**
 
 For accurate amplitude measurement, the sampling frequency must be at least twice the signal frequency:
-
-$$
-f_{\text{clock}} \geq 2 \times f_{\text{signal}}
-$$
-
+$$f_{\text{clock}} \geq 2 \times f_{\text{signal}}$$
 **Maximum allowable signal frequency:**
-
-$$
-f_{\text{signal}} \leq \frac{f_{\text{clock}}}{2} = \frac{1.4\, \text{GHz}}{2} = 700\, \text{MHz}
-$$
-
+$$f_{\text{signal}} \leq \frac{f_{\text{clock}}}{2} = \frac{1.4\, \text{GHz}}{2} = 700\, \text{MHz}$$
 **Practical safety margin (10×):**
-
-$$
-f_{\text{signal}} \leq 70\, \text{MHz} \quad \text{(recommended)}
-$$
-
+$$f_{\text{signal}} \leq 70\, \text{MHz} \quad \text{(recommended)}$$
 
 ### 3.3 Minimum Distance Constraints
 
   
 
 **Wavelength calculation:**
-
-$$
-\lambda = \frac{c}{f_{\text{signal}}}
-$$
-
+$$\lambda = \frac{c}{f_{\text{signal}}}$$
 **For 70 MHz signal:**
-
-$$
-\lambda = \frac{2.998 \times 10^{8}}{70 \times 10^{6}} = 4.28 \text{ m}
-$$
-
+$$\lambda = \frac{2.998 \times 10^{8}}{70 \times 10^{6}} = 4.28 \text{ m}$$
 **Minimum separation distance:**
-
-$$
-d_{\text{min}} = \lambda = 4.28 \text{ m}
-$$
-
+$$d_{\text{min}} = \lambda = 4.28 \text{ m}$$
 This ensures agents operate in the far-field region where plane wave approximation is valid.
 
   
@@ -293,32 +206,20 @@ This ensures agents operate in the far-field region where plane wave approximati
   
 
 **Free Space Path Loss (FSPL):**
-
-$$
-\text{FSPL (dB)} = 20 \log_{10}(d) + 20 \log_{10}(f) + 32.44
-$$
-
+$$\text{FSPL (dB)} = 20 \log_{10}(d) + 20 \log_{10}(f) + 32.44$$
 Where $d$ is in km and $f$ is in MHz.
 
 **Link Budget Analysis:**
 
 For $1W$ transmitter ($30dBm$) and $-100dBm$ receiver sensitivity:
-
-$$
-\text{Link Budget} = 30 - (-100) = 130 \text{ dB}
-$$
-
+$$\text{Link Budget} = 30 - (-100) = 130 \text{ dB}$$
 **Maximum range calculation:**
-
-$$
-\begin{aligned}
+$$\begin{aligned}
 130 &= 20 \log_{10}(d) + 20 \log_{10}(70) + 32.44 \\
 130 &= 20 \log_{10}(d) + 36.9 + 32.44 \\
 20 \log_{10}(d) &= 130 - 36.9 - 32.44 = 60.66 \\
 d &= 10^{\frac{60.66}{20}} = 1.07 \text{ km}
-\end{aligned}
-$$
-
+\end{aligned}$$
 **Practical maximum range:** ~1 km (line-of-sight)
 
 
@@ -368,11 +269,7 @@ $$
   
 
 **Total System Delay:**
-
-$$
-T_{\text{offset}} = T_{\text{detect}} + T_{\text{ack\_gen}} + T_{\text{tx\_prep}} + T_{\text{rx\_proc}} + T_{\text{ack\_tx}}
-$$
-
+$$T_{\text{offset}} = T_{\text{detect}} + T_{\text{ack\_gen}} + T_{\text{tx\_prep}} + T_{\text{rx\_proc}} + T_{\text{ack\_tx}}$$
 
   
 
@@ -397,22 +294,11 @@ $$
 
 
 **Offset Calculation:**
-
-$$
-\text{Distance}_{\text{offset}} = d_{\text{known}} - d_{\text{measured}}
-$$
-
-$$
-\text{Time}_{\text{offset}} = \frac{2 \times \text{Distance}_{\text{offset}}}{c}
-$$
-
+$$\text{Distance}_{\text{offset}} = d_{\text{known}} - d_{\text{measured}}$$
+$$\text{Time}_{\text{offset}} = \frac{2 \times \text{Distance}_{\text{offset}}}{c}$$
 
 **Corrected Distance Formula:**
-
-$$
-d_{\text{actual}} = c \times \frac{(T_2 - T_1 - T_{\text{offset}})}{2}
-$$
-
+$$d_{\text{actual}} = c \times \frac{(T_2 - T_1 - T_{\text{offset}})}{2}$$
 ### 4.3 Calibration Example
 
   
@@ -426,17 +312,9 @@ $$
   
 
 **Distance offset:**
-
-$$
-\text{Distance}_{\text{offset}} = 10.00 - 10.56 = -0.56 \text{ m}
-$$
-
+$$\text{Distance}_{\text{offset}} = 10.00 - 10.56 = -0.56 \text{ m}$$
 **Time offset:**
-
-$$
-T_{\text{offset}} = \frac{2 \times (-0.56)}{2.998 \times 10^{8}} = -3.74 \times 10^{-9} \text{ s} = -3.74 \text{ ns}
-$$
-
+$$T_{\text{offset}} = \frac{2 \times (-0.56)}{2.998 \times 10^{8}} = -3.74 \times 10^{-9} \text{ s} = -3.74 \text{ ns}$$
 **Correction factor:** Add $3.74 ns$ to all future measurements.
 
 
@@ -572,15 +450,8 @@ The system employs a dual communication architecture to separate high-precision 
   
 
 Each agent maintains two time references:
-
-$$
-t_{\text{standard}} = t_{\text{universal}} + \delta_{\text{standard}} + \epsilon_{\text{standard}} \times t
-$$
-
-$$
-t_{\text{precision}} = t_{\text{universal}} + \delta_{\text{precision}} + \epsilon_{\text{precision}} \times t_{\text{active}}
-$$
-  
+$$t_{\text{standard}} = t_{\text{universal}} + \delta_{\text{standard}} + \epsilon_{\text{standard}} \times t$$
+$$t_{\text{precision}} = t_{\text{universal}} + \delta_{\text{precision}} + \epsilon_{\text{precision}} \times t_{\text{active}}$$  
 
 Where:
 
@@ -614,29 +485,17 @@ Where:
 **Temporal Window Constraint:**
 
 For position updates every 1 second, all distance measurements must be collected within a synchronization window:
-
-$$
-\Delta t_{\text{sync}} \leq \frac{\sigma_{\text{position}}}{v_{\max} \times GDOP}
-$$
-
+$$\Delta t_{\text{sync}} \leq \frac{\sigma_{\text{position}}}{v_{\max} \times GDOP}$$
 Where $v_{\max}$ is maximum rover velocity.
 
 **For 10 cm accuracy and 10 m/s max velocity:**
-
-$$
-\Delta t_{\text{sync}} \leq \frac{0.1}{10 \times 1.22} = 8.2 \text{ ms}
-$$
-
+$$\Delta t_{\text{sync}} \leq \frac{0.1}{10 \times 1.22} = 8.2 \text{ ms}$$
 ### 5.5 Measurement Timing Requirements (Dual System)
 
 **For 1 Hz position updates with 4 agents:**
 
 **Complete measurement cycle timing:**
-
-$$
-T_{\text{total}} = T_{\text{stabilization}} + T_{\text{measure phase}} + T_{\text{transmit phase}} + T_{\text{compute}}
-$$
-
+$$T_{\text{total}} = T_{\text{stabilization}} + T_{\text{measure phase}} + T_{\text{transmit phase}} + T_{\text{compute}}$$
 **Detailed timing breakdown:**
 
 - $T_{\text{stabilization}} = 200 \text{ ms}$ (precision clock thermal stabilization)  
@@ -645,17 +504,9 @@ $$
 - $T_{\text{compute}} = 5 \text{ ms}$ (multilateration calculation)  
 
 **Total active cycle time:**
-
-$$
-T_{\text{total}} = 200 + 8 + 40 + 5 = 253 \text{ ms}
-$$
-
+$$T_{\text{total}} = 200 + 8 + 40 + 5 = 253 \text{ ms}$$
 **Precision clock duty cycle:**
-
-$$
-\text{Duty\_cycle} = \frac{T_{\text{stabilization}} + T_{\text{measure phase}}}{T_{\text{total}}} = \frac{208}{253} = 82\%
-$$
-
+$$\text{Duty\_cycle} = \frac{T_{\text{stabilization}} + T_{\text{measure phase}}}{T_{\text{total}}} = \frac{208}{253} = 82\%$$
 **Available time budget:**  
 $1000 \text{ ms} - 253 \text{ ms} = 747 \text{ ms}$ (safety margin)
 
@@ -685,11 +536,7 @@ $1000 \text{ ms} - 253 \text{ ms} = 747 \text{ ms}$ (safety margin)
   
 
 **For 4 agents at 1 Hz:**
-
-$$
-\text{System A data rate} = \frac{(32 + 4 \times 64 + 4 \times 104) \times 3}{1 \text{ s}} = 2.1 \text{ kbps}
-$$
-
+$$\text{System A data rate} = \frac{(32 + 4 \times 64 + 4 \times 104) \times 3}{1 \text{ s}} = 2.1 \text{ kbps}$$
 **System B (Precision Timing):**
 
 - ToF signal packets: Minimal data payload  
@@ -698,21 +545,13 @@ $$
 - Active only during measurement phases (8 ms per cycle)  
 
 **Total communication overhead:**
-
-$$
-\text{Combined bandwidth} \approx 2.2 \text{ kbps (easily achievable)}
-$$
-
+$$\text{Combined bandwidth} \approx 2.2 \text{ kbps (easily achievable)}$$
 ### 5.7 Thermal Management and Clock Stability
 
 **Precision Clock Thermal Considerations:**
 
 **Temperature-Frequency Relationship:**
-
-$$
-\frac{\Delta f}{f} = \alpha \times \Delta T
-$$
-
+$$\frac{\Delta f}{f} = \alpha \times \Delta T$$
 Where $\alpha \approx 10^{-6}/^\circ C$ for quality crystal oscillators
 
 **Thermal Stabilization Requirements:**
@@ -755,51 +594,23 @@ Where $\alpha \approx 10^{-6}/^\circ C$ for quality crystal oscillators
 ### 6.1 Distance Measurement Error Sources
 
 **Precision Clock Errors:**
-
-$$
-\sigma_{\text{clock}} = \frac{\text{clock\_resolution}}{\sqrt{12}} \approx 0.29 \times \text{clock\_resolution}
-$$
-
+$$\sigma_{\text{clock}} = \frac{\text{clock\_resolution}}{\sqrt{12}} \approx 0.29 \times \text{clock\_resolution}$$
 **Thermal Stabilization Error:**
-
-$$
-\sigma_{\text{thermal}} = \alpha \times \Delta T_{\text{residual}} \times \frac{c}{2 \times f_{\text{signal}}}
-$$
-
+$$\sigma_{\text{thermal}} = \alpha \times \Delta T_{\text{residual}} \times \frac{c}{2 \times f_{\text{signal}}}$$
 For ±0.1°C stability: $\sigma_{\text{thermal}} \approx 1.5\, \text{cm}\)
 
 **Clock Activation Jitter:**
-
-$$
-\sigma_{\text{activation}} \approx 100\, \text{ps} \quad \text{(typical for precision oscillator startup)}
-$$
-
+$$\sigma_{\text{activation}} \approx 100\, \text{ps} \quad \text{(typical for precision oscillator startup)}$$
 Equivalent to 1.5 cm distance error.
 
 **Signal noise error:**
-
-$$
-\sigma_{\text{noise}} = \frac{c}{2 \times BW \times \sqrt{SNR}}
-$$
-
+$$\sigma_{\text{noise}} = \frac{c}{2 \times BW \times \sqrt{SNR}}$$
 **Multipath error:**
-
-$$
-\sigma_{\text{multipath}} \approx 0.1 \times \lambda \quad \text{(in urban environments)}
-$$
-
+$$\sigma_{\text{multipath}} \approx 0.1 \times \lambda \quad \text{(in urban environments)}$$
 **Processing delay stability:**
-
-$$
-\sigma_{\text{processing}} \approx \pm 1\, \text{ns} \quad \text{(typical for digital systems)}
-$$
-
+$$\sigma_{\text{processing}} \approx \pm 1\, \text{ns} \quad \text{(typical for digital systems)}$$
 **Communication System Timing Uncertainty:**
-
-$$
-\sigma_{\text{comm}} = \frac{\text{standard\_clock\_resolution}}{\sqrt{12}}
-$$
-
+$$\sigma_{\text{comm}} = \frac{\text{standard\_clock\_resolution}}{\sqrt{12}}$$
 For 100 MHz standard clock: $\sigma_{\text{comm}} \approx 2.9\, \text{ns} \rightarrow 87\, \text{cm}$
 
 ---
@@ -807,13 +618,9 @@ For 100 MHz standard clock: $\sigma_{\text{comm}} \approx 2.9\, \text{ns} \right
 ### 6.2 Combined Error Analysis (Modified for Dual Architecture)
 
 **Root Sum Square (RSS) combination:**
-
-$$
-\sigma_{\text{total}} = \sqrt{
+$$\sigma_{\text{total}} = \sqrt{
 \sigma_{\text{clock}}^2 + \sigma_{\text{thermal}}^2 + \sigma_{\text{activation}}^2 + \sigma_{\text{noise}}^2 + \sigma_{\text{multipath}}^2 + \sigma_{\text{processing}}^2
-}
-$$
-
+}$$
 **Note:** $\sigma_{\text{comm}}$ cancels out due to base station timestamp replacement.
 
 **For 1.4 GHz precision clock, 70 MHz signal, 20 dB SNR:**
@@ -826,11 +633,7 @@ $$
 - $\sigma_{\text{processing}} \approx 30\, \text{cm}$ 
 
 **Total distance error:**
-
-$$
-\sigma_{\text{total}} = \sqrt{6.2^2 + 1.5^2 + 1.5^2 + 7.5^2 + 43^2 + 30^2} = 53.6\, \text{cm}
-$$
-
+$$\sigma_{\text{total}} = \sqrt{6.2^2 + 1.5^2 + 1.5^2 + 7.5^2 + 43^2 + 30^2} = 53.6\, \text{cm}$$
 
 **Impact of Dual Architecture:**
 
