@@ -82,7 +82,8 @@ To find intersection points between two circles with centers $(x_1, y_1)$ and $(
 
   
 
-**Step 1**: Calculate the distance between centers:$$d = \sqrt{(x_2 - x_1)^2 + (y_2 - y_1)^2}$$  
+**Step 1**: Calculate the distance between centers:
+$$d = \sqrt{(x_2 - x_1)^2 + (y_2 - y_1)^2}$$  
 
 **Step 2**: Check for intersection conditions:
 
@@ -94,12 +95,15 @@ To find intersection points between two circles with centers $(x_1, y_1)$ and $(
 
   
 
-**Step 3**: Calculate intersection points when they exist:$$a = \frac{r_1^2 - r_2^2 + d^2}{2d}$$  $$h = \sqrt{r_1^2 - a^2}$$  
+**Step 3**: Calculate intersection points when they exist:
+$$a = \frac{r_1^2 - r_2^2 + d^2}{2d}$$  $$h = \sqrt{r_1^2 - a^2}$$  
 
-**Step 4**: Find the midpoint between intersections:$$x_m = x_1 + a \cdot \frac{x_2 - x_1}{d}$$
+**Step 4**: Find the midpoint between intersections:
+$$x_m = x_1 + a \cdot \frac{x_2 - x_1}{d}$$
 $$y_m = y_1 + a \cdot \frac{y_2 - y_1}{d}$$  
 
-**Step 5**: Calculate the two intersection points:$$x_{int1} = x_m + h \cdot \frac{y_1 - y_2}{d}$$
+**Step 5**: Calculate the two intersection points:
+$$x_{int1} = x_m + h \cdot \frac{y_1 - y_2}{d}$$
 $$y_{int1} = y_m + h \cdot \frac{x_2 - x_1}{d}$$  $$x_{int2} = x_m - h \cdot \frac{y_1 - y_2}{d}$$
 $$y_{int2} = y_m - h \cdot \frac{x_2 - x_1}{d}$$  
 
@@ -192,13 +196,15 @@ The intersection circle lies on a plane perpendicular to the line connecting the
 
   $$\mathbf{c} = \mathbf{p_1} + a \cdot \frac{\mathbf{p_2} - \mathbf{p_1}}{|\mathbf{p_2} - \mathbf{p_1}|}$$  
 
-where:$$a = \frac{r_1^2 - r_2^2 + d^2}{2d}$$  
+where:
+$$a = \frac{r_1^2 - r_2^2 + d^2}{2d}$$  
 
 and $d$ is the distance between sphere centers.
 
   
 
-The intersection circle's radius is:$$h = \sqrt{r_1^2 - a^2}$$  
+The intersection circle's radius is:
+$$h = \sqrt{r_1^2 - a^2}$$  
 
 With four or more spheres, multiple intersection circles are generated, and their convergence point represents the unknown position. This is typically solved using least-squares optimization to find the point that minimizes the sum of squared distances to all intersection planes.
 
@@ -220,7 +226,8 @@ To find the circular intersection between two spheres:
 
   
 
-**Step 2**: Calculate distance between centers:$$d = |\mathbf{c_2} - \mathbf{c_1}| = \sqrt{(x_2-x_1)^2 + (y_2-y_1)^2 + (z_2-z_1)^2}$$  
+**Step 2**: Calculate distance between centers:
+$$d = |\mathbf{c_2} - \mathbf{c_1}| = \sqrt{(x_2-x_1)^2 + (y_2-y_1)^2 + (z_2-z_1)^2}$$  
 
 **Step 3**: Check intersection conditions:
 
@@ -232,9 +239,11 @@ To find the circular intersection between two spheres:
 
   
 
-**Step 4**: Calculate intersection circle parameters:$$a = \frac{r_1^2 - r_2^2 + d^2}{2d}$$  $$h = \sqrt{r_1^2 - a^2}$$  
+**Step 4**: Calculate intersection circle parameters:
+$$a = \frac{r_1^2 - r_2^2 + d^2}{2d}$$  $$h = \sqrt{r_1^2 - a^2}$$  
 
-**Step 5**: Find intersection circle center:$$\mathbf{p} = \mathbf{c_1} + a \cdot \frac{\mathbf{c_2} - \mathbf{c_1}}{d}$$  
+**Step 5**: Find intersection circle center:
+$$\mathbf{p} = \mathbf{c_1} + a \cdot \frac{\mathbf{c_2} - \mathbf{c_1}}{d}$$  
 
 **Step 6**: Define intersection plane
 
@@ -260,7 +269,8 @@ For $n$ spheres, compute intersection circles for all $\binom{n}{2}$ sphere pair
 
 **Step 2**: Convert circles to plane equations
 
-Each intersection circle defines a plane equation:$$n_x(x - p_x) + n_y(y - p_y) + n_z(z - p_z) = 0$$  
+Each intersection circle defines a plane equation:
+$$n_x(x - p_x) + n_y(y - p_y) + n_z(z - p_z) = 0$$  
 
 **Step 3**: Solve system of plane equations using least squares
 
@@ -288,7 +298,8 @@ n_{mx} & n_{my} & n_{mz}
 
 \end{bmatrix}$$  
 
-**Step 4**: Solve for unknown position:$$\mathbf{x} = (\mathbf{A}^T\mathbf{A})^{-1}\mathbf{A}^T\mathbf{b}$$  
+**Step 4**: Solve for unknown position:
+$$\mathbf{x} = (\mathbf{A}^T\mathbf{A})^{-1}\mathbf{A}^T\mathbf{b}$$  
 
 **Alternative Method: Point-Circle Distance Minimization**
 
@@ -300,7 +311,8 @@ For each intersection circle $i$ with center $\mathbf{p_i}$, normal $\mathbf{n_i
 
   $$f_i(\mathbf{x}) = \left| |\mathbf{x} - \mathbf{p_i} - (\mathbf{n_i} \cdot (\mathbf{x} - \mathbf{p_i}))\mathbf{n_i}| - h_i \right|^2$$  
 
-**Step 2**: Minimize total error:$$\mathbf{x}_{optimal} = \arg\min_{\mathbf{x}} \sum_{i=1}^{m} f_i(\mathbf{x})$$  
+**Step 2**: Minimize total error:
+$$\mathbf{x}_{optimal} = \arg\min_{\mathbf{x}} \sum_{i=1}^{m} f_i(\mathbf{x})$$  
 
 This minimization finds the point that lies closest to all intersection circles simultaneously.
 
