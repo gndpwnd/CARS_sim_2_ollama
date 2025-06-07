@@ -62,15 +62,14 @@ The system of equations can be solved by:
 
 For three circles, the mathematical solution involves solving the system:
 
-{
-$$
-\begin{array}{l}
-(x - x_1)^2 + (y - y_1)^2 = d_1^2 \\
-(x - x_2)^2 + (y - y_2)^2 = d_2^2 \\
-(x - x_3)^2 + (y - y_3)^2 = d_3^2
-\end{array}
-$$
-}
+\[
+\begin{aligned}
+(x - x_1)^2 + (y - y_1)^2 &= d_1^2 \\
+(x - x_2)^2 + (y - y_2)^2 &= d_2^2 \\
+(x - x_3)^2 + (y - y_3)^2 &= d_3^2
+\end{aligned}
+\]
+
 
 
 ### Circle-Circle Intersection Calculations
