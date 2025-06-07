@@ -309,7 +309,11 @@ For each intersection circle $i$ with center $\mathbf{p_i}$, normal $\mathbf{n_i
   $$f_i(\mathbf{x}) = \left| |\mathbf{x} - \mathbf{p_i} - (\mathbf{n_i} \cdot (\mathbf{x} - \mathbf{p_i}))\mathbf{n_i}| - h_i \right|^2$$  
 
 **Step 2**: Minimize total error:
-$$\mathbf{x}_{optimal} = \arg\min_{\mathbf{x}} \sum_{i=1}^{m} f_i(\mathbf{x})$$  
+
+$$
+\mathbf{x}_{\text{optimal}} = \arg\min_{\mathbf{x}} \sum_{i=1}^{m} f_i(\mathbf{x})
+$$
+
 
 This minimization finds the point that lies closest to all intersection circles simultaneously.
 
