@@ -296,9 +296,9 @@ $$T_{\text{offset}} = T_{\text{detect}} + T_{\text{ack\_gen}} + T_{\text{tx\_pre
 
 **Offset Calculation:**
 
-$$\text{Distance}_{\text{offset}} = d_{\text{known}} - d_{\text{measured}}$$
+$\text{Distance}_{\text{offset}} = d_{\text{known}} - d_{\text{measured}}$
 
-$$\text{Time}_{\text{offset}} = \frac{2 \times \text{Distance}_{\text{offset}}}{c}$$
+$\text{Time}_{\text{offset}} = \frac{2 \times \text{Distance}_{\text{offset}}}{c}$
 
 **Corrected Distance Formula:**
 
