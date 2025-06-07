@@ -312,13 +312,9 @@ $$d_{\text{actual}} = c \times \frac{(T_2 - T_1 - T_{\text{offset}})}{2}$$
   
 
 **Distance offset:**
-
-$$\text{Distance}_{\text{offset}} = 10.00 - 10.56 = -0.56 \text{m}$$
-
+$$\text{Distance}_{\text{offset}} = 10.00 - 10.56 = -0.56 \text{ m}$$
 **Time offset:**
-
-$$T_{\text{offset}} = \frac{2 \times (-0.56)}{2.998 \times 10^{8}} = -3.74 \times 10^{-9} \text{ s} = -3.74 \text{ns}$$
-
+$$T_{\text{offset}} = \frac{2 \times (-0.56)}{2.998 \times 10^{8}} = -3.74 \times 10^{-9} \text{ s} = -3.74 \text{ ns}$$
 **Correction factor:** Add $3.74 ns$ to all future measurements.
 
 
@@ -490,10 +486,12 @@ Where:
 
 For position updates every 1 second, all distance measurements must be collected within a synchronization window:
 $$\Delta t_{\text{sync}} \leq \frac{\sigma_{\text{position}}}{v_{\max} \times GDOP}$$
+
 Where $v_{\max}$ is maximum rover velocity.
 
 **For 10 cm accuracy and 10 m/s max velocity:**
 $$\Delta t_{\text{sync}} \leq \frac{0.1}{10 \times 1.22} = 8.2 \text{ ms}$$
+
 ### 5.5 Measurement Timing Requirements (Dual System)
 
 **For 1 Hz position updates with 4 agents:**
