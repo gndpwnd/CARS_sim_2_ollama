@@ -276,30 +276,27 @@ $$n_x(x - p_x) + n_y(y - p_y) + n_z(z - p_z) = 0$$
 
 Construct the overdetermined system $\mathbf{A}\mathbf{x} = \mathbf{b}$:
 
-  $$\mathbf{A} = \begin{bmatrix}
-
+$$
+\mathbf{A} = \begin{bmatrix}
 n_{1x} & n_{1y} & n_{1z} \\
-
 n_{2x} & n_{2y} & n_{2z} \\
-
 \vdots & \vdots & \vdots \\
-
 n_{mx} & n_{my} & n_{mz}
-
-\end{bmatrix}, \quad \mathbf{b} = \begin{bmatrix}
-
+\end{bmatrix}, \quad
+\mathbf{b} = \begin{bmatrix}
 \mathbf{n_1} \cdot \mathbf{p_1} \\
-
 \mathbf{n_2} \cdot \mathbf{p_2} \\
-
 \vdots \\
-
 \mathbf{n_m} \cdot \mathbf{p_m}
-
-\end{bmatrix}$$  
+\end{bmatrix}
+$$
 
 **Step 4**: Solve for unknown position:
-$$\mathbf{x} = (\mathbf{A}^T\mathbf{A})^{-1}\mathbf{A}^T\mathbf{b}$$  
+
+$$
+\mathbf{x} = (\mathbf{A}^T \mathbf{A})^{-1} \mathbf{A}^T \mathbf{b}
+$$
+
 
 **Alternative Method: Point-Circle Distance Minimization**
 
