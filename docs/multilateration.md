@@ -60,19 +60,17 @@ The system of equations can be solved by:
 
 3. **Convergence Point**: Identify the point with maximum intersections (ideally where all circles meet)
 
-  
-
 For three circles, the mathematical solution involves solving the system:
 
 $$
-\left\{
+\{
 \begin{array}{l}
 (x - x_1)^2 + (y - y_1)^2 = d_1^2 \\
 (x - x_2)^2 + (y - y_2)^2 = d_2^2 \\
 (x - x_3)^2 + (y - y_3)^2 = d_3^2
 \end{array}
-\right.
 $$
+
 
 ### Circle-Circle Intersection Calculations
 
