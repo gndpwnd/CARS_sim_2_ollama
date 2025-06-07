@@ -64,7 +64,7 @@ The system of equations can be solved by:
 
 For three circles, the mathematical solution involves solving the system:
 
-\[
+$$
 \left\{
 \begin{array}{l}
 (x - x_1)^2 + (y - y_1)^2 = d_1^2 \\
@@ -72,8 +72,7 @@ For three circles, the mathematical solution involves solving the system:
 (x - x_3)^2 + (y - y_3)^2 = d_3^2
 \end{array}
 \right.
-\]
-
+$$
 
 ### Circle-Circle Intersection Calculations
 
