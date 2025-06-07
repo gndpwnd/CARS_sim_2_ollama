@@ -160,8 +160,8 @@ $$\sigma_{\text{V}} = \frac{4}{3} \pi \cdot \sigma_{\text{position}}^3$$
   
 
 **Required distance accuracy:**
-$$\sigma_d = \frac{\sigma_{\text{position}}}{\text{GDOP} \times \sqrt{\frac{1}{n}}}
-\\[8pt]$$
+
+$$\sigma_d = \frac{\sigma_{\text{position}}}{\mathrm{GDOP} \times \sqrt{\frac{1}{n}}}$$
 
 $$\sigma_d = \frac{0.134}{1.22 \times 0.5} = 0.22 \text{ m}$$
 
@@ -211,19 +211,20 @@ Where $d$ is in km and $f$ is in MHz.
 
 **Link Budget Analysis:**
 
-For $1W$ transmitter ($30dBm$) and $-100dBm$ receiver sensitivity:
-$$\text{Link Budget} = 30 - (-100) = 130 \text{ dB}$$
+For a $1\,W$ transmitter ($30\,dBm$) and $-100\,dBm$ receiver sensitivity:
+
+$$\text{Link Budget} = 30 - (-100) = 130\, \text{dB}$$
+
 **Maximum range calculation:**
+
 $$\begin{aligned}
 130 &= 20 \log_{10}(d) + 20 \log_{10}(70) + 32.44 \\
 130 &= 20 \log_{10}(d) + 36.9 + 32.44 \\
 20 \log_{10}(d) &= 130 - 36.9 - 32.44 = 60.66 \\
-d &= 10^{\frac{60.66}{20}} = 1.07 \text{ km}
+d &= 10^{\frac{60.66}{20}} = 1.07\, \text{km}
 \end{aligned}$$
+
 **Practical maximum range:** ~1 km (line-of-sight)
-
-
-  
 
 ### 3.5 Hardware Summary for 10 cm³ Accuracy
 
@@ -294,7 +295,9 @@ $$T_{\text{offset}} = T_{\text{detect}} + T_{\text{ack\_gen}} + T_{\text{tx\_pre
 
 
 **Offset Calculation:**
+
 $$\text{Distance}_{\text{offset}} = d_{\text{known}} - d_{\text{measured}}$$
+
 $$\text{Time}_{\text{offset}} = \frac{2 \times \text{Distance}_{\text{offset}}}{c}$$
 
 **Corrected Distance Formula:**
@@ -599,7 +602,8 @@ Where $\alpha \approx 10^{-6}/^\circ C$ for quality crystal oscillators
 $$\sigma_{\text{clock}} = \frac{\text{clock\_resolution}}{\sqrt{12}} \approx 0.29 \times \text{clock\_resolution}$$
 **Thermal Stabilization Error:**
 $$\sigma_{\text{thermal}} = \alpha \times \Delta T_{\text{residual}} \times \frac{c}{2 \times f_{\text{signal}}}$$
-For ±0.1°C stability: $\sigma_{\text{thermal}} \approx 1.5\, \text{cm}\)
+For ±0.1°C stability: 
+$$\sigma_{\text{thermal}} \approx 1.5\, \text{cm}$$
 
 **Clock Activation Jitter:**
 $$\sigma_{\text{activation}} \approx 100\, \text{ps} \quad \text{(typical for precision oscillator startup)}$$
