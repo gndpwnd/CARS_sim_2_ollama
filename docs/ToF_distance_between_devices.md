@@ -301,7 +301,9 @@ $$\text{Distance}_{\text{offset}} = d_{\text{known}} - d_{\text{measured}}$$
 $$\text{Time}_{\text{offset}} = \frac{2 \times \text{Distance}_{\text{offset}}}{c}$$
 
 **Corrected Distance Formula:**
+
 $$d_{\text{actual}} = c \times \frac{(T_2 - T_1 - T_{\text{offset}})}{2}$$
+
 ### 4.3 Calibration Example
 
   
@@ -315,9 +317,13 @@ $$d_{\text{actual}} = c \times \frac{(T_2 - T_1 - T_{\text{offset}})}{2}$$
   
 
 **Distance offset:**
+
 $$\text{Distance}_{\text{offset}} = 10.00 - 10.56 = -0.56 \text{ m}$$
+
 **Time offset:**
+
 $$T_{\text{offset}} = \frac{2 \times (-0.56)}{2.998 \times 10^{8}} = -3.74 \times 10^{-9} \text{ s} = -3.74 \text{ ns}$$
+
 **Correction factor:** Add $3.74 ns$ to all future measurements.
 
 
