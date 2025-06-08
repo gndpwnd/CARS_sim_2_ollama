@@ -21,13 +21,22 @@ model = SentenceTransformer("all-MiniLM-L6-v2")
 def init_db(retries=5, delay=3):
     for attempt in range(retries):
         try:
+            # Create extensions separately
+            try:
+                with psycopg2.connect(**DB_CONFIG) as conn:
+                    conn.autocommit = True  # Important for extension creation
+                    with conn.cursor() as cur:
+                        # Try to create extensions
+                        cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+                        cur.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto;")
+            except psycopg2.errors.UniqueViolation as e:
+                print(f"Extension already exists, continuing: {e}")
+                # This is fine - extensions already exist
+                pass
+            
+            # Create tables in a separate transaction
             with psycopg2.connect(**DB_CONFIG) as conn:
                 with conn.cursor() as cur:
-                    # Ensure pgvector and pgcrypto extensions are enabled
-                    cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
-                    cur.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto;")
-                    conn.commit()
-
                     # Create logs table with auto-generated UUID and timestamp
                     cur.execute(f"""
                         CREATE TABLE IF NOT EXISTS logs (
@@ -49,7 +58,7 @@ def init_db(retries=5, delay=3):
                         CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs ((metadata->>'timestamp'));
                     """)
                     
-                    conn.commit()
+                conn.commit()
             print("✅ Database initialized successfully.")
             return
         except psycopg2.OperationalError:
@@ -86,7 +95,6 @@ def add_log(log_text, metadata=None, agent_id=None, log_id=None):
         conn.commit()
     
     return inserted_id
-
 
 # ─── RETRIEVE SIMILAR LOGS ─────────────────────────────
 def retrieve_relevant(query, k=3):
