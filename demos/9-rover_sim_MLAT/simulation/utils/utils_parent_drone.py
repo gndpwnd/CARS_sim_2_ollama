@@ -5,6 +5,7 @@ Parent drone utilities - Supporting functions for parent drone operations.
 import time
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Set
+from vehicles.parent_drone_status import ParentDroneStatus
 
 # Constants
 TELEMETRY_TIMEOUT = 5.0  # seconds before considering drone offline
@@ -48,13 +49,13 @@ def coordinate_rover_positioning(parent_drone, current_time: float):
     available_drones = get_available_drones_for_positioning(parent_drone)
     
     if len(available_drones) < MIN_DRONES_FOR_POSITIONING:
-        parent_drone.status = parent_drone.ParentDroneStatus.REPOSITIONING_DRONES
+        parent_drone.status = ParentDroneStatus.REPOSITIONING_DRONES
         _handle_insufficient_drones(parent_drone, available_drones)
         return
     
     # Check multilateration constraints
     if not check_multilateration_constraints(parent_drone, available_drones):
-        parent_drone.status = parent_drone.ParentDroneStatus.REPOSITIONING_DRONES
+        parent_drone.status = ParentDroneStatus.REPOSITIONING_DRONES
         fix_constraint_violations(parent_drone, available_drones)
         return
     
@@ -215,20 +216,20 @@ def send_position_to_rover(parent_drone, rover_position: Tuple[float, float], cu
     
     # Send to rover
     parent_drone.rover.receive_position_update(position_update)
-    parent_drone.status = parent_drone.ParentDroneStatus.SENDING_POSITION
+    parent_drone.status = ParentDroneStatus.SENDING_POSITION
     
     print(f"Parent drone {parent_drone.drone_id} sent position {rover_position} to rover")
 
 
 def update_status(parent_drone):
     """Update parent drone status based on current operations."""
-    if parent_drone.status == parent_drone.ParentDroneStatus.REPOSITIONING_DRONES:
+    if parent_drone.status == ParentDroneStatus.REPOSITIONING_DRONES:
         # Check if repositioning is complete
         if not parent_drone.repositioning_drones:
-            parent_drone.status = parent_drone.ParentDroneStatus.IDLE
-    elif parent_drone.status == parent_drone.ParentDroneStatus.SENDING_POSITION:
+            parent_drone.status = ParentDroneStatus.IDLE
+    elif parent_drone.status == ParentDroneStatus.SENDING_POSITION:
         # Reset to collecting measurements
-        parent_drone.status = parent_drone.ParentDroneStatus.COLLECTING_MEASUREMENTS
+        parent_drone.status = ParentDroneStatus.COLLECTING_MEASUREMENTS
 
 
 def _handle_insufficient_drones(parent_drone, available_drones: List[str]):

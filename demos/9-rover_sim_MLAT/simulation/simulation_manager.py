@@ -56,7 +56,7 @@ class SimulationManager:
         # Create child drones
         child_positions = [
             (25, 25), (75, 25), (75, 75), (25, 75),  # Corner positions
-            (50, 15), (85, 50), (50, 85), (15, 50)   # Mid-edge positions
+            #(50, 15), (85, 50), (50, 85), (15, 50)   # Mid-edge positions
         ]
         
         for i, pos in enumerate(child_positions):

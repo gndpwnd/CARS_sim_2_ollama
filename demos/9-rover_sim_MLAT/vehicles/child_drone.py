@@ -17,7 +17,7 @@ from simulation.utils.utils_MLAT import euclidean_distance, is_point_in_circle
 
 # Constants
 COMM_RANGE = 50.0  # meters - communication range
-NUM_DRONE_POS_ONBOARD = 10  # number of positions to store for recovery
+NUM_DRONE_POS_ONBOARD = 5  # number of positions to store for recovery
 GPS_UPDATE_RATE = 1.0  # Hz
 POSITION_NOISE_STD = 0.1  # meters
 MOVEMENT_SPEED = 2.0  # m/s
@@ -43,6 +43,7 @@ class TelemetryData:
     measurement_quality: Optional[float] = None
     battery_level: float = 100.0
     signal_strength: float = 100.0
+    jammed: bool = False
 
 
 class ChildDrone:
@@ -234,7 +235,8 @@ class ChildDrone:
                 distance_to_rover=measurement_data.get('measured_distance'),
                 measurement_quality=measurement_data.get('measurement_quality'),
                 battery_level=self.battery_level,
-                signal_strength=self.signal_strength
+                signal_strength=self.signal_strength,
+                jammed=self.jammed
             )
             
             self.parent_drone.receive_telemetry(telemetry, measurement_data)
@@ -254,7 +256,8 @@ class ChildDrone:
                     gps_available=self.gps_available,
                     status=self.status,
                     battery_level=self.battery_level,
-                    signal_strength=self.signal_strength
+                    signal_strength=self.signal_strength,
+                    jammed=self.jammed,
                 )
                 
                 self.parent_drone.receive_telemetry(telemetry)
