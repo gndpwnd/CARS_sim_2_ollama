@@ -36,6 +36,11 @@ class SimulationManager:
         
     def _initialize_vehicles(self):
         """Initialize all vehicles for the simulation."""
+        # Clear existing vehicles to avoid duplication on reset
+        self.child_drones.clear()
+        self.rover = None
+        self.parent_drone = None
+
         # Create rover
         rover_start_pos = (10, 10)
         self.rover = Rover("ROVER_01", rover_start_pos, self.bounds)
