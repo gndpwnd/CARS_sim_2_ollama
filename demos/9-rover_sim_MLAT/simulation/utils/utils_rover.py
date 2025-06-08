@@ -57,7 +57,7 @@ def check_gps_status(position: Tuple[float, float],
     Returns:
         Tuple of (has_gps, gps_lost_time)
     """
-    from utils.utils_MLAT import is_point_in_circle
+    from simulation.utils.utils_MLAT import is_point_in_circle
     
     # Check if in any GPS-denied area
     in_denied_area = any(
@@ -119,7 +119,7 @@ def calculate_movement(current_pos: Tuple[float, float],
 def check_waypoint_reached(current_pos: Tuple[float, float],
                           waypoint_pos: Tuple[float, float]) -> bool:
     """Check if rover has reached a waypoint."""
-    from utils.utils_MLAT import euclidean_distance
+    from simulation.utils.utils_MLAT import euclidean_distance
     
     distance = euclidean_distance(current_pos, waypoint_pos)
     return distance <= WAYPOINT_TOLERANCE
@@ -128,7 +128,7 @@ def check_waypoint_reached(current_pos: Tuple[float, float],
 def can_communicate(rover_pos: Tuple[float, float],
                    drone_pos: Tuple[float, float]) -> bool:
     """Check if rover can communicate with drone."""
-    from utils.utils_MLAT import euclidean_distance
+    from simulation.utils.utils_MLAT import euclidean_distance
     
     distance = euclidean_distance(rover_pos, drone_pos)
     return distance <= COMM_RANGE

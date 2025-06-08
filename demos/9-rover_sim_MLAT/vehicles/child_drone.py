@@ -12,8 +12,8 @@ from enum import Enum
 from collections import deque
 
 # Import existing modules
-from distance_measurement import ToFDistanceMeasurement, HardwareConfig
-from utils.utils_MLAT import euclidean_distance, is_point_in_circle
+from simulation.distance_measurement import ToFDistanceMeasurement, HardwareConfig
+from simulation.utils.utils_MLAT import euclidean_distance, is_point_in_circle
 
 # Constants
 COMM_RANGE = 50.0  # meters - communication range

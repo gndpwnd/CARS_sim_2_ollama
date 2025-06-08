@@ -9,7 +9,7 @@ import numpy as np
 import math
 from typing import List, Tuple, Optional, Union
 from scipy.optimize import least_squares
-from constraints_MLAT import (
+from simulation.utils.constraints_MLAT import (
     MULTILATERATION_TOLERANCE,
     MAX_ITERATIONS,
     CONVERGENCE_THRESHOLD,
@@ -76,6 +76,19 @@ def calculate_rms_error(errors: List[float]) -> float:
         return 0.0
     return math.sqrt(sum(e**2 for e in errors) / len(errors))
 
+def is_point_in_circle(point: Tuple[float, float], center: Tuple[float, float], radius: float) -> bool:
+    """
+    Check if a 2D point is inside or on the boundary of a circle.
+    
+    Args:
+        point: (x, y) coordinates of the point
+        center: (x, y) coordinates of the circle center
+        radius: Circle radius
+        
+    Returns:
+        True if point is inside or on the circle, False otherwise
+    """
+    return euclidean_distance(point, center) <= radius
 
 # ==============================================================================
 # 2D GEOMETRIC CALCULATIONS

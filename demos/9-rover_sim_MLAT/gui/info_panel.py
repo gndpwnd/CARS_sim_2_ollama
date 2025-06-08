@@ -86,7 +86,7 @@ class InfoPanel(QWidget):
         vehicle_widget.setStyleSheet(f"""
             QWidget {{
                 background-color: #333333;
-                border: 2px solid {vehicle.color};
+                border: 2px solid {vehicle['color']};
                 border-radius: 6px;
                 margin: 3px;
                 padding: 6px;
@@ -98,12 +98,12 @@ class InfoPanel(QWidget):
         vehicle_layout.setContentsMargins(6, 6, 6, 6)
         
         # Vehicle header
-        header = QLabel(f"{vehicle.id}")
+        header = QLabel(f"{vehicle['id']}")
         header.setStyleSheet(f"""
             QLabel {{
                 font-size: 13px;
                 font-weight: bold;
-                color: {vehicle.color};
+                color: {vehicle['color']};
                 padding: 3px;
                 background-color: #404040;
                 border-radius: 3px;
@@ -147,7 +147,7 @@ class InfoPanel(QWidget):
         vehicle_layout.addWidget(est_err_widget)
         
         # Store references to labels for updates
-        self.vehicle_info_labels[vehicle.id] = {
+        self.vehicle_info_labels[vehicle['id']] = {
             "gps": gps_label,
             "position": pos_label,
             "estimated": est_label,
@@ -186,23 +186,23 @@ class InfoPanel(QWidget):
     def update_vehicle_info(self, vehicles):
         """Update vehicle information display."""
         for vehicle in vehicles:
-            if vehicle.id not in self.vehicle_info_labels:
+            if vehicle['id'] not in self.vehicle_info_labels:
                 continue
                 
-            labels = self.vehicle_info_labels[vehicle.id]
+            labels = self.vehicle_info_labels[vehicle['id']]
             
             # Update GPS status
-            self._update_gps_status(labels["gps"], vehicle.has_gps)
+            self._update_gps_status(labels["gps"], vehicle['has_gps'])
             
             # Update position
-            pos_text = f"({vehicle.position[0]:.1f},{vehicle.position[1]:.1f})"
+            pos_text = f"({vehicle['position'][0]:.1f},{vehicle['position'][1]:.1f})"
             labels["position"].setText(f"Pos: {pos_text}")
             
             # Update estimated position
-            self._update_estimated_position(labels["estimated"], vehicle.estimated_position)
+            self._update_estimated_position(labels["estimated"], vehicle['estimated_position'])
             
             # Update error
-            self._update_error_display(labels["error"], vehicle.position_error)
+            self._update_error_display(labels["error"], vehicle['position_error'])
     
     def _update_gps_status(self, label, has_gps):
         """Update GPS status display."""

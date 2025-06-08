@@ -45,7 +45,7 @@ class GPSLocalizationGUI(QMainWindow):
         
         # Create UI components
         self.plot_area = PlotArea(self.plot_manager, self.sim_manager)
-        self.info_panel = InfoPanel(self.sim_manager.vehicles)
+        self.info_panel = InfoPanel(self.sim_manager.get_all_vehicles())
         
         # Add components to main layout
         main_layout.addWidget(self.plot_area)
@@ -80,13 +80,13 @@ class GPSLocalizationGUI(QMainWindow):
         """Update all display components."""
         # Update plot
         self.plot_manager.update_plot(
-            self.sim_manager.vehicles,
+            self.sim_manager.get_all_vehicles(),
             self.sim_manager.gps_denied_areas,
             self.sim_manager.bounds
         )
         
         # Update info panel
-        self.info_panel.update_vehicle_info(self.sim_manager.vehicles)
+        self.info_panel.update_vehicle_info(self.sim_manager.get_all_vehicles())
         self.info_panel.update_simulation_status(
             self.sim_manager.running,
             self.sim_manager.paused,

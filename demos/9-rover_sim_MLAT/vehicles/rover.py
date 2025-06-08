@@ -8,7 +8,7 @@ from typing import Tuple, List, Optional, Dict
 from dataclasses import dataclass
 from collections import deque
 
-from utils_rover import (
+from simulation.utils.utils_rover import (
     RoverStatus,
     SurveyWaypoint,
     PositionUpdate,

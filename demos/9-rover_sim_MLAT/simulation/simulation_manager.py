@@ -148,7 +148,11 @@ class SimulationManager:
                 'id': self.rover.rover_id,
                 'position': self.rover.position,
                 'status': self.rover.get_status_dict(),
-                'color': 'blue'
+                'color': 'blue',
+                'trajectory': getattr(self.rover, 'trajectory', []),
+                'has_gps': self.rover.has_gps if hasattr(self.rover, 'has_gps') else True,
+                'estimated_position': self.rover.get_status_dict().get('estimated_position'),
+                'position_error': self.rover.get_status_dict().get('position_error', 0.0),
             })
         
         if self.parent_drone:
@@ -157,16 +161,25 @@ class SimulationManager:
                 'id': self.parent_drone.drone_id,
                 'position': self.parent_drone.position,
                 'status': self.parent_drone.get_status_dict(),
-                'color': 'red'
+                'color': 'red',
+                'trajectory': getattr(self.parent_drone, 'trajectory', []),
+                'has_gps': True,
+                'estimated_position': None,
+                'position_error': 0.0,
             })
         
         for drone in self.child_drones:
+            status = drone.get_status_dict()
             vehicles.append({
                 'type': 'child_drone',
                 'id': drone.drone_id,
                 'position': drone.position,
-                'status': drone.get_status_dict(),
-                'color': 'green' if drone.gps_available and not drone.jammed else 'orange'
+                'status': status,
+                'color': 'green' if drone.gps_available and not drone.jammed else 'orange',
+                'trajectory': getattr(drone, 'trajectory', []),
+                'has_gps': drone.gps_available,
+                'estimated_position': status.get('estimated_position'),
+                'position_error': status.get('position_error', 0.0),
             })
         
         return vehicles

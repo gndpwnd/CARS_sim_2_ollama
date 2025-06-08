@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 # Import centralized utilities and constraints
-from utils_ToF import (
+from simulation.utils.utils_ToF import (
     time_to_distance, distance_to_time, calculate_geometric_distance,
     clock_resolution_to_distance_error, thermal_error_to_distance_error,
     calculate_total_measurement_error, calculate_communication_quality,
@@ -20,7 +20,7 @@ from utils_ToF import (
     calculate_measurement_statistics, processing_delay_to_distance_offset
 )
 
-from constraints_ToF import (
+from simulation.utils.constraints_ToF import (
     SPEED_OF_LIGHT, SIGNAL_FREQUENCY, SIGNAL_WAVELENGTH, TRANSMIT_POWER,
     RECEIVER_SENSITIVITY, PRECISION_CLOCK_FREQ, STANDARD_CLOCK_FREQ,
     THERMAL_STABILIZATION_TIME, TEMPERATURE_STABILITY, TEMPERATURE_COEFFICIENT,

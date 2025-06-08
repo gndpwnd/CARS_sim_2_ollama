@@ -10,9 +10,9 @@ from enum import Enum
 from collections import defaultdict, deque
 
 # Import existing modules
-from multilateration import MultilaterationSolver
-from child_drone import TelemetryData, DroneStatus
-from utils_parent_drone import (
+from simulation.multilateration import MultilaterationSolver
+from vehicles.child_drone import TelemetryData, DroneStatus
+from simulation.utils.utils_parent_drone import (
     check_drone_connectivity,
     cleanup_old_commands,
     coordinate_rover_positioning,

@@ -40,22 +40,22 @@ class SimulationPlot:
         # Draw vehicles
         for vehicle in vehicles:
             # Draw trajectory
-            if len(vehicle.trajectory) > 1:
-                trajectory_array = np.array(vehicle.trajectory)
+            if len(vehicle['trajectory']) > 1:
+                trajectory_array = np.array(vehicle['trajectory'])
                 self.ax.plot(
                     trajectory_array[:, 0],
                     trajectory_array[:, 1],
-                    color=vehicle.color,
+                    color=vehicle['color'],
                     alpha=0.3,
                     linewidth=1,
                 )
 
             # Draw vehicle current position
-            marker_style = "o" if vehicle.has_gps else "s"
-            marker_size = 8 if vehicle.has_gps else 10
+            marker_style = "o" if vehicle['has_gps'] else "s"
+            marker_size = 8 if vehicle['has_gps'] else 10
             self.ax.scatter(
-                *vehicle.position,
-                color=vehicle.color,
+                *vehicle['position'],
+                color=vehicle['color'],
                 marker=marker_style,
                 s=marker_size**2,
                 edgecolor="black",
@@ -64,9 +64,9 @@ class SimulationPlot:
             )
 
             # Draw estimated position if available
-            if vehicle.estimated_position and not vehicle.has_gps:
+            if vehicle['estimated_position'] and not vehicle['has_gps']:
                 self.ax.scatter(
-                    *vehicle.estimated_position,
+                    *vehicle['estimated_position'],
                     color="lime",
                     marker="*",
                     s=100,
@@ -78,8 +78,8 @@ class SimulationPlot:
 
                 # Draw error circle
                 error_circle = plt.Circle(
-                    vehicle.estimated_position,
-                    vehicle.position_error,
+                    vehicle['estimated_position'],
+                    vehicle['position_error'],
                     color="lime",
                     alpha=0.2,
                     fill=True,
@@ -88,8 +88,8 @@ class SimulationPlot:
 
                 # Draw line between true and estimated position
                 self.ax.plot(
-                    [vehicle.position[0], vehicle.estimated_position[0]],
-                    [vehicle.position[1], vehicle.estimated_position[1]],
+                    [vehicle['position'][0], vehicle['estimated_position'][0]],
+                    [vehicle['position'][1], vehicle['estimated_position'][1]],
                     "r--",
                     alpha=0.7,
                     linewidth=1,
@@ -97,12 +97,12 @@ class SimulationPlot:
 
             # Add vehicle label
             self.ax.annotate(
-                vehicle.id,
-                vehicle.position,
+                vehicle['id'],
+                vehicle['position'],
                 xytext=(5, 5),
                 textcoords="offset points",
                 fontsize=8,
-                color=vehicle.color,
+                color=vehicle['color'],
                 fontweight="bold",
             )
 

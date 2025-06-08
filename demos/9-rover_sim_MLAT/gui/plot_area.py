@@ -5,7 +5,9 @@ Plot Area Widget - Handles the matplotlib plot and user interactions.
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import QVBoxLayout, QWidget
 from gui.control_panel import ControlPanel
-from utils import utils
+from simulation.utils.utils_MLAT import (
+    euclidean_distance
+)
 
 class PlotArea(QWidget):
     """Widget containing the plot and controls for drawing GPS-denied areas."""
@@ -77,7 +79,7 @@ class PlotArea(QWidget):
         if event.xdata is None or event.ydata is None:
             return
             
-        radius = utils.euclidean_distance(
+        radius = euclidean_distance(
             self.area_start, 
             (event.xdata, event.ydata)
         )
@@ -93,7 +95,7 @@ class PlotArea(QWidget):
             return
         
         # Calculate final radius and add area if valid
-        radius = utils.euclidean_distance(
+        radius = euclidean_distance(
             self.area_start,
             (event.xdata, event.ydata)
         )

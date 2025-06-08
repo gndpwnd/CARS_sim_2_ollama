@@ -9,7 +9,7 @@ Uses utility functions from utils_MLAT.py for calculations.
 import numpy as np
 from typing import List, Tuple, Optional, Dict, Union
 from scipy.optimize import least_squares
-from constraints_MLAT import (
+from simulation.utils.constraints_MLAT import (
     validate_multilateration_input, 
     GeometricConstraints,
     get_dimension_config,
@@ -18,7 +18,7 @@ from constraints_MLAT import (
     CONVERGENCE_THRESHOLD,
     LEAST_SQUARES_REGULARIZATION
 )
-from utils_MLAT import (
+from simulation.utils.utils_MLAT import (
     euclidean_distance,
     calculate_centroid,
     calculate_rms_error,
