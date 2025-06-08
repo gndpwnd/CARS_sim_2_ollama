@@ -20,3 +20,15 @@ when switching to 3d, i want matplotlib to plot everything in 3d but if switchin
 also i noticed a bug - when starting the sim and having drawn no obstacles, there exists occlusion being detected, this should not happen. maybe you need to modify the constraint of accuracy to within 0.1m or something but in this simulation i should be able to draw an obstacle and then the occlusion detection system, not knowing the position of the rover or any obstacles, should determine that an anchor point/drone is facing occlusion from the rover.
 
 I just recently split my occlusion checker into occlusion hanlder and occlusion checker, the checker is now a sub class of the handler in which the handler will control higher level actions like movement of anchors/drones when needed and the checker simply perorms geometric analysis so that i can reduce overall file sizes. i want to make sure everything seems to flow together and that no code is redundant.
+
+
+
+
+
+
+
+
+
+
+
+I am trying to make documentation regarding target occlusion when performing multilateraion and time of flight calculations. I already have the theory behind multilateration and ToF figured out and there relative constraints but i need to fill in the gaps for determining if when using a group of at least 4 drones/anchors if any of the drones/anchors are occluded from the rover due to terrain features or buildings or other obstructions. I want to make documentation that is more pallatable and easier for a reader to digest if they already read the documentation for multilateration and time of flight calculations. I want all target occlusion calculations to show all steps. please bridge gaps between the seed file (pseudo code algorithm) and the other overview file (beginning to include math and geometry proofs) and make a new file that includes all relevant information in an organized manner. when you make a reference to multilateration simly put a "(see multilateration)" or for time of flight or distance measurements put "(see ToF)". please let me know if you have any more questions and again i want a singlular markdown page that only discusses all aspects of target occlusion and if needed it references multilateration and ToF documentation. I prefer to have a numbered series of steps when you discuss a plausible algorithm to detect and fix target occlusion for a single anchor/drone and multiple anchors/drones. you do not need to make any actual code nor do you need to explain recovering from target occlusion, recovery will be covered in other documentation.
