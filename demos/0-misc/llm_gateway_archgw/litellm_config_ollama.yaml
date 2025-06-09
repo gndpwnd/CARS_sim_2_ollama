@@ -1,0 +1,10 @@
+model_list:
+  - model_name: "llama3.2:1b"             
+    litellm_params:
+      model: "ollama/llama3.2:1b"
+      #keep_alive: "8m" # Optional: Overrides default keep_alive, use -1 for Forever
+      #api_base: http://127.0.0.1:11434/
+      api_base: http://192.168.0.123:11434
+      api_key: none
+    model_info:
+      supports_function_calling: true
