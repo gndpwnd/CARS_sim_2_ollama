@@ -1,24 +1,37 @@
+## Table of Contents
+> [TOC Generator](https://www.docstomarkdown.pro/markdown-table-of-contents-generator-free/)
+
+- [CARS_sim_2_ollama](#cars_sim_2_ollama)
+  - [Setup Your Ubuntu/Debian System For Demos](#setup-your-ubuntu/debian-system-for-demos)
+    - [WSL Setup](#wsl-setup)
+  - [Running the Demos](#running-the-demos)
+  - [Handling other things in the project](#handling-other-things-in-the-project)
+    - [Automatically Downloaded Files](#automatically-downloaded-files)
+    - [Setting up a folder to Share Between Host-Machine and VM](#setting-up-a-folder-to-share-between-host-machine-and-vm)
+    - [Setting up Docker Compose](#setting-up-docker-compose)
+    - [Running docker compose](#running-docker-compose)
+- [TODO](#todo)
+  - [Basic Simulation](#basic-simulation)
+  - [Algorithmic-Agent Interaction](#algorithmic-agent-interaction)
+  - [LLM-Agent Interaction](#llm-agent-interaction)
+  - [GPS-Denied Surveying Rover Location Relay (Real World Application #1)](#gps-denied-surveying-rover-location-relay-(real-world-application-#1))
+  - [User-LLM-Agent Interaction (Highest Abstraction)](#user-llm-agent-interaction-(highest-abstraction))
+
 # CARS_sim_2_ollama
 > <a href="https://github.com/Swarm-Squad" target="_blank" rel="noopener noreferrer">Swarm-Squad</a>
 
-> using python 3.11
+> using ubuntu 22.04 LTS and python 3.11
 > if using torch, pip install torch --index-url https://download.pytorch.org/whl/cpu
 
-Install python3.11 on ubuntu
+## Setup Your Ubuntu/Debian System For Demos
+
+Install python3.11
 
 ```
 sudo add-apt-repository ppa:deadsnakes/ppa
 sudo apt update
 sudo apt install python3.11 python3.11-venv
 ```
-
-Install python3.11 on Arch Linux
-
-```
-sudo pacman -R python311
-```
-
-## Setup For Demos
 
 clone the repo
 
@@ -38,7 +51,83 @@ install requirements
 pip install --upgrade pip; pip install -r requirements.txt
 ```
 
-in a separate terminal, start the ollama server and run the necessary ollama model
+install docker
+
+```
+sudo apt install -y docker.io docker-compose; sudo groupadd docker; sudo usermod -aG docker $USER; sudo systemctl start docker; sudo systemctl enable docker; newgrp docker
+```
+
+install docker compose
+
+```
+DOCKER_CONFIG=${DOCKER_CONFIG:-$HOME/.docker}; mkdir -p $DOCKER_CONFIG/cli-plugins; curl -SL https://github.com/docker/compose/releases/download/v2.35.0/docker-compose-linux-x86_64 -o $DOCKER_CONFIG/cli-plugins/docker-compose; chmod +x $DOCKER_CONFIG/cli-plugins/docker-compose; docker compose version
+```
+
+install ollama and check if it is started
+
+```
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+```
+sudo systemctl start ollama
+sudo systemctl status ollama
+```
+
+in a separate terminal from the terminal you run the python scripts in, run the necessary ollama model
+
+```
+ollama run [model_name]
+```
+
+### WSL Setup
+
+1) Install WSL and your preferred Linux distribution (e.g., Ubuntu 22.04 LTS).
+2) Install Visual Studio Code on Windows.
+3) Install the "WSL" extension in VS Code
+   - I also like to use the git "source control" extension so I can directly push and pull to a repo
+5) Start a new WSL terminal, navigate to the folder you want to open in code and type:
+
+```bash
+code .
+```
+
+you may get a message similar to the following
+
+```
+Installing VS Code Server for Linux x64 (6f17636121051a53c88d3e605c491d22af2ba755)
+Downloading: 100%
+Unpacking: 100%
+Unpacked 2052 files and folders to /home/dev/.vscode-server/bin/6f17636121051a53c88d3e605c491d22af2ba755.
+Looking for compatibility check script at /home/dev/.vscode-server/bin/6f17636121051a53c88d3e605c491d22af2ba755/bin/helpers/check-requirements.sh
+Running compatibility check script
+Compatibility check successful (0)
+```
+
+code should open and you might get a message such as ***Do you trust the authors of the files in this folder?***. Make sure to trust the authors.
+
+Your folder should be opened in code. Now when you open a terminal in code it should open a wsl terminal.
+
+**WSL Troubleshooting Operations**
+
+> [developing on top of WSL](https://code.visualstudio.com/docs/remote/wsl)
+
+after starting up the venv, installing pip requirements, and trying to start a demo:
+
+```
+qt.qpa.plugin: Could not load the Qt platform plugin "xcb" in "" even though it was found.
+This application failed to start because no Qt platform plugin could be initialized. Reinstalling the application may fix this problem.
+
+Available platform plugins are: eglfs, linuxfb, minimal, minimalegl, offscreen, vnc, wayland-egl, wayland, wayland-xcomposite-egl, wayland-xcomposite-glx, webgl, xcb.
+
+Aborted (core dumped)
+```
+
+the fix for now:
+
+```bash
+sudo apt update; sudo apt install -y libx11-xcb1 libxcb1 libxcb-render0 libxcb-shape0 libxcb-xfixes0 libxcb-render-util0 libxcb-image0 libxcb-keysyms1 libxcb-icccm4 libxcb-sync1 libxcb-xkb1 libxcb-randr0 libxcb-xinerama0 libxkbcommon-x11-0 libxkbcommon0; pip install pyqt5
+```
 
 ## Running the Demos
 
