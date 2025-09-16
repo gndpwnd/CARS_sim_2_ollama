@@ -1,0 +1,400 @@
+{
+  "Signal Quality Indicators": {
+    "Satellite Lock Monitoring": {
+      "Fix Quality Degradation Detection": {
+        "name": "Fix Quality Degradation",
+        "threshold": 3,
+        "warning_threshold": 2,
+        "unit": "quality",
+        "current_value": 3
+      },
+      "Lock Degradation Event Counting": {
+        "name": "Lock Degradation Events",
+        "threshold": 5,
+        "warning_threshold": 3,
+        "unit": "events",
+        "current_value": 1
+      },
+      "Cold Start Reacquisition Time Monitoring": {
+        "name": "Cold Start Reacq. Time",
+        "threshold": 60,
+        "warning_threshold": 45,
+        "unit": "seconds",
+        "current_value": 25
+      },
+      "Warm Start Reacquisition Time Monitoring": {
+        "name": "Warm Start Reacq. Time",
+        "threshold": 30,
+        "warning_threshold": 20,
+        "unit": "seconds",
+        "current_value": 12
+      }
+    },
+    "Satellite Count Monitoring": {
+      "Satellite Count Warning Threshold": {
+        "name": "Satellite Count Warning",
+        "threshold": 6,
+        "warning_threshold": 8,
+        "unit": "satellites",
+        "current_value": 12
+      },
+      "Satellite Count Critical Threshold": {
+        "name": "Satellite Count Critical",
+        "threshold": 4,
+        "warning_threshold": 5,
+        "unit": "satellites",
+        "current_value": 12
+      },
+      "Satellite Count Drop Rate Detection": {
+        "name": "Sat Count Drop Rate",
+        "threshold": 3,
+        "warning_threshold": 2,
+        "unit": "sats/min",
+        "current_value": 0
+      }
+    },
+    "Signal Strength Analysis": {
+      "Carrier-to-Noise Ratio Degradation Detection": {
+        "name": "C/N0 Degradation",
+        "threshold": -10,
+        "warning_threshold": -5,
+        "unit": "dB",
+        "current_value": 2
+      },
+      "C/N0 Drop Rate Detection": {
+        "name": "C/N0 Drop Rate",
+        "threshold": 5,
+        "warning_threshold": 3,
+        "unit": "dB/s",
+        "current_value": 0.5
+      },
+      "Automatic Gain Control Monitoring": {
+        "name": "AGC Jamming Level",
+        "threshold": 80,
+        "warning_threshold": 70,
+        "unit": "percent",
+        "current_value": 45
+      }
+    }
+  },
+  "Data Integrity Monitoring": {
+    "Message Corruption Detection": {
+      "Checksum Failure Rate Monitoring": {
+        "name": "Checksum Failure Rate",
+        "threshold": 5,
+        "warning_threshold": 2,
+        "unit": "percent",
+        "current_value": 0.5
+      },
+      "Truncated Sentence Rate Monitoring": {
+        "name": "Truncated Sentence Rate",
+        "threshold": 10,
+        "warning_threshold": 5,
+        "unit": "percent",
+        "current_value": 1
+      },
+      "Parity Error Frequency Monitoring": {
+        "name": "Parity Error Frequency",
+        "threshold": 15,
+        "warning_threshold": 8,
+        "unit": "errors/min",
+        "current_value": 2
+      }
+    },
+    "RAIM Monitoring": {
+      "RAIM Test Statistic Monitoring": {
+        "name": "RAIM Test Statistic",
+        "threshold": 6,
+        "warning_threshold": 4,
+        "unit": "sigma",
+        "current_value": 2.1
+      },
+      "Horizontal Alert Limit Monitoring": {
+        "name": "Horizontal Alert Limit",
+        "threshold": 10,
+        "warning_threshold": 7,
+        "unit": "meters",
+        "current_value": 3.2
+      },
+      "Vertical Alert Limit Monitoring": {
+        "name": "Vertical Alert Limit",
+        "threshold": 15,
+        "warning_threshold": 10,
+        "unit": "meters",
+        "current_value": 4.8
+      },
+      "Time to Alert Monitoring": {
+        "name": "Time to Alert",
+        "threshold": 10,
+        "warning_threshold": 7,
+        "unit": "seconds",
+        "current_value": 3
+      }
+    }
+  },
+  "Position and Velocity Consistency": {
+    "Position Jump Detection": {
+      "Position Jump Magnitude Detection": {
+        "name": "Position Jump Magnitude",
+        "threshold": 5,
+        "warning_threshold": 3,
+        "unit": "meters",
+        "current_value": 0.8
+      },
+      "Position Oscillation Detection": {
+        "name": "Position Oscillation",
+        "threshold": 2,
+        "warning_threshold": 1.5,
+        "unit": "meters",
+        "current_value": 0.3
+      },
+      "Static Position Variance Monitoring": {
+        "name": "Static Position Variance",
+        "threshold": 1,
+        "warning_threshold": 0.7,
+        "unit": "meters²",
+        "current_value": 0.2
+      }
+    },
+    "Velocity Validation": {
+      "Rover Velocity Limit Monitoring": {
+        "name": "Rover Velocity Limit",
+        "threshold": 50,
+        "warning_threshold": 40,
+        "unit": "km/h",
+        "current_value": 15
+      },
+      "Rover Acceleration Limit Monitoring": {
+        "name": "Rover Acceleration Limit",
+        "threshold": 10,
+        "warning_threshold": 8,
+        "unit": "m/s²",
+        "current_value": 2.1
+      },
+      "Heading Change Rate Monitoring": {
+        "name": "Heading Change Rate",
+        "threshold": 180,
+        "warning_threshold": 120,
+        "unit": "deg/s",
+        "current_value": 15
+      }
+    }
+  },
+  "RTK-Specific Indicators": {
+    "Fix Status Monitoring": {
+      "RTK Fix Status Validation": {
+        "name": "RTK Fix Status",
+        "threshold": 1,
+        "warning_threshold": 2,
+        "unit": "fix_type",
+        "current_value": 4
+      },
+      "RTK Fix Degradation Progression Monitoring": {
+        "name": "RTK Fix Degradation",
+        "threshold": 2,
+        "warning_threshold": 1,
+        "unit": "degradation_steps",
+        "current_value": 0
+      }
+    },
+    "Carrier Phase Monitoring": {
+      "Carrier Phase Cycle Slip Detection": {
+        "name": "Carrier Phase Cycle Slips",
+        "threshold": 5,
+        "warning_threshold": 3,
+        "unit": "slips",
+        "current_value": 1
+      }
+    }
+  },
+  "Cross-Sensor Validation": {
+    "INS/GPS Comparison": {
+      "GPS-INS Position Consistency Check": {
+        "name": "GPS-INS Position Diff",
+        "threshold": 3,
+        "warning_threshold": 2,
+        "unit": "meters",
+        "current_value": 0.5
+      },
+      "GPS-INS Innovation Vector Monitoring": {
+        "name": "GPS-INS Innovation",
+        "threshold": 4,
+        "warning_threshold": 3,
+        "unit": "sigma",
+        "current_value": 1.2
+      },
+      "INS Drift Rate Monitoring": {
+        "name": "INS Drift Rate",
+        "threshold": 0.1,
+        "warning_threshold": 0.07,
+        "unit": "m/h",
+        "current_value": 0.02
+      }
+    },
+    "Wheel Odometry Integration": {
+      "GPS-Wheel Odometry Distance Comparison": {
+        "name": "GPS-Wheel Distance Diff",
+        "threshold": 5,
+        "warning_threshold": 3,
+        "unit": "percent",
+        "current_value": 1.2
+      },
+      "GPS-Wheel Speed Consistency Check": {
+        "name": "GPS-Wheel Speed Diff",
+        "threshold": 2,
+        "warning_threshold": 1.5,
+        "unit": "m/s",
+        "current_value": 0.3
+      }
+    },
+    "IMU Cross-Validation": {
+      "GPS-IMU Angular Rate Comparison": {
+        "name": "GPS-IMU Angular Rate Diff",
+        "threshold": 10,
+        "warning_threshold": 7,
+        "unit": "deg/s",
+        "current_value": 2
+      },
+      "Heading Validation Check": {
+        "name": "Heading Validation Error",
+        "threshold": 15,
+        "warning_threshold": 10,
+        "unit": "degrees",
+        "current_value": 3
+      }
+    },
+    "UWB Cross-Validation": {
+      "UWB Distance Consistency Normal Check": {
+        "name": "UWB Distance Error Normal",
+        "threshold": 1,
+        "warning_threshold": 0.7,
+        "unit": "meters",
+        "current_value": 0.2
+      },
+      "UWB Distance Consistency Failure Check": {
+        "name": "UWB Distance Error Critical",
+        "threshold": 5,
+        "warning_threshold": 3,
+        "unit": "meters",
+        "current_value": 0.8
+      }
+    }
+  },
+  "Environmental Adaptations": {
+    "Environment-Specific Thresholds": {
+      "Environment-Based Threshold Adjustment": {
+        "name": "Environment Threshold Factor",
+        "threshold": 2,
+        "warning_threshold": 1.5,
+        "unit": "multiplier",
+        "current_value": 1.2
+      },
+      "Urban Environment Threshold Adjustment": {
+        "name": "Urban Threshold Factor",
+        "threshold": 2.5,
+        "warning_threshold": 2,
+        "unit": "multiplier",
+        "current_value": 1.8
+      },
+      "Forest Environment Warning Extension": {
+        "name": "Forest Warning Extension",
+        "threshold": 60,
+        "warning_threshold": 40,
+        "unit": "seconds",
+        "current_value": 20
+      },
+      "Satellite Elevation Angle Masking": {
+        "name": "Satellite Elevation Mask",
+        "threshold": 10,
+        "warning_threshold": 15,
+        "unit": "degrees",
+        "current_value": 25
+      }
+    },
+    "Dynamic Threshold Management": {
+      "Adaptive Detection Threshold Adjustment": {
+        "name": "Adaptive Threshold Factor",
+        "threshold": 2,
+        "warning_threshold": 1.7,
+        "unit": "multiplier",
+        "current_value": 1.1
+      },
+      "Noise Floor Adaptive Thresholds": {
+        "name": "Noise Floor Estimate",
+        "threshold": -100,
+        "warning_threshold": -110,
+        "unit": "dBm",
+        "current_value": -125
+      },
+      "Ionospheric Activity Compensation": {
+        "name": "Ionospheric Activity Index",
+        "threshold": 8,
+        "warning_threshold": 6,
+        "unit": "index",
+        "current_value": 3
+      }
+    }
+  },
+  "Multi-Indicator Fusion": {
+    "Weighted Decision Algorithm": {
+      "GPS Health Score Calculation": {
+        "name": "GPS Health Score",
+        "threshold": 30,
+        "warning_threshold": 50,
+        "unit": "score",
+        "current_value": 85
+      },
+      "GPS Healthy State Threshold": {
+        "name": "GPS Healthy Threshold",
+        "threshold": 80,
+        "warning_threshold": 70,
+        "unit": "score",
+        "current_value": 85
+      },
+      "GPS Degraded State Threshold": {
+        "name": "GPS Degraded Threshold",
+        "threshold": 60,
+        "warning_threshold": 50,
+        "unit": "score",
+        "current_value": 85
+      },
+      "GPS Suspicious State Threshold": {
+        "name": "GPS Suspicious Threshold",
+        "threshold": 40,
+        "warning_threshold": 30,
+        "unit": "score",
+        "current_value": 85
+      },
+      "GPS Denied State Threshold": {
+        "name": "GPS Denied Threshold",
+        "threshold": 20,
+        "warning_threshold": 15,
+        "unit": "score",
+        "current_value": 85
+      }
+    },
+    "Temporal Filtering": {
+      "Detection Counter Confirmation": {
+        "name": "Detection Counter",
+        "threshold": 5,
+        "warning_threshold": 3,
+        "unit": "count",
+        "current_value": 0
+      },
+      "Condition Improvement Decrement": {
+        "name": "Improvement Rate",
+        "threshold": 0.5,
+        "warning_threshold": 0.3,
+        "unit": "rate",
+        "current_value": 0.1
+      },
+      "Emergency Bypass Temporal Filtering": {
+        "name": "Emergency Bypass Active",
+        "threshold": 1,
+        "warning_threshold": 0,
+        "unit": "boolean",
+        "current_value": 0
+      }
+    }
+  }
+}
