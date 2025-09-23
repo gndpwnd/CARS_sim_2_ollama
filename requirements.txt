@@ -20,3 +20,5 @@ uvicorn==0.34.2
 wcwidth
 jwt
 aiofiles
+pynmea2
+pyrtcm

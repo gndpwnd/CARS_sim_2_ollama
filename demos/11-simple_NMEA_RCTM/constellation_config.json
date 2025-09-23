@@ -1,0 +1,120 @@
+{
+  "gps_satellites": 32,
+  "glonass_satellites": 24,
+  "galileo_satellites": 30,
+  "base_station": {
+    "latitude": 40.7128,
+    "longitude": -74.0060,
+    "altitude": 10.0,
+    "station_id": 1001,
+    "name": "NYC_RTK_BASE"
+  },
+  "server": {
+    "host": "localhost",
+    "port": 12345,
+    "max_clients": 10,
+    "timeout_seconds": 30
+  },
+  "signal_quality": {
+    "base_cnr": 45.0,
+    "noise_floor": 20.0,
+    "jamming_threshold": 70.0,
+    "elevation_mask_degrees": 10,
+    "min_usable_cnr": 25.0
+  },
+  "environmental_conditions": {
+    "ionospheric_activity": {
+      "base_level": 1.0,
+      "variation_range": 0.3,
+      "update_rate_minutes": 15
+    },
+    "tropospheric_delay": {
+      "base_delay_ns": 0.0,
+      "humidity_factor": 1.2,
+      "temperature_factor": 1.1
+    },
+    "multipath": {
+      "urban_factor": 1.5,
+      "suburban_factor": 1.2,
+      "rural_factor": 1.0,
+      "forest_factor": 1.8
+    }
+  },
+  "orbital_parameters": {
+    "gps_period_hours": 11.967,
+    "glonass_period_hours": 11.25,
+    "galileo_period_hours": 14.08,
+    "simulation_speed_multiplier": 1.0
+  },
+  "message_generation": {
+    "nmea": {
+      "gga_enabled": true,
+      "rmc_enabled": true,
+      "gsa_enabled": true,
+      "gsv_enabled": true,
+      "vtg_enabled": false,
+      "gll_enabled": false,
+      "update_rate_hz": 1.0
+    },
+    "rtcm": {
+      "enabled": true,
+      "message_types": [1005, 1077, 1087, 1097, 1230],
+      "update_rate_hz": 1.0,
+      "base_corrections_enabled": true
+    }
+  },
+  "simulation_scenarios": {
+    "normal": {
+      "satellite_availability": 1.0,
+      "signal_degradation": 1.0,
+      "jamming_probability": 0.0,
+      "multipath_factor": 1.0
+    },
+    "urban_canyon": {
+      "satellite_availability": 0.6,
+      "signal_degradation": 0.8,
+      "jamming_probability": 0.1,
+      "multipath_factor": 2.5
+    },
+    "forest": {
+      "satellite_availability": 0.7,
+      "signal_degradation": 0.85,
+      "jamming_probability": 0.05,
+      "multipath_factor": 1.8
+    },
+    "jamming_attack": {
+      "satellite_availability": 0.2,
+      "signal_degradation": 0.3,
+      "jamming_probability": 0.9,
+      "multipath_factor": 1.0
+    },
+    "gps_denied": {
+      "satellite_availability": 0.0,
+      "signal_degradation": 0.0,
+      "jamming_probability": 1.0,
+      "multipath_factor": 1.0
+    }
+  },
+  "rtk_corrections": {
+    "baseline_accuracy_cm": 2,
+    "max_baseline_km": 50,
+    "age_of_corrections_max_seconds": 30,
+    "atmospheric_corrections": true,
+    "ionospheric_corrections": true,
+    "tropospheric_corrections": true
+  },
+  "error_injection": {
+    "cycle_slip_probability": 0.01,
+    "checksum_error_probability": 0.001,
+    "message_truncation_probability": 0.002,
+    "time_jump_probability": 0.0001,
+    "position_jump_max_meters": 100.0
+  },
+  "logging": {
+    "level": "INFO",
+    "log_nmea_messages": false,
+    "log_rtcm_messages": false,
+    "log_client_requests": true,
+    "log_file": "constellation.log"
+  }
+}
