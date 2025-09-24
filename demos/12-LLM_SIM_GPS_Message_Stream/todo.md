@@ -43,6 +43,9 @@ I just want to keep track of GPS module messages and IMU on agents
 - only need to add error to drone/agent for simulation
 
 - sang already has GPS simulation, just need to add plausible NMEA/RTCM messages that look real
+ - https://github.com/Swarm-Squad/Swarm-Squad-Ep1/tree/main/lib/old
+ - each simulation is standalone, just need main.py and utils.py
+
 - then need to have something to show message streams, like my demo with qdrant and postgresql chat website.
 
 - need to store the following
