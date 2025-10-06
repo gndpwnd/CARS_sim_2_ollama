@@ -18,23 +18,33 @@ python main_gui.py
 
 
 
-(venv) dev@DB-78GB094:~/CARS_sim_2_ollama/demos/11-simple_NMEA_RCTM$ tree -I "__pycache__" -I "docs" -I "docs_old"
+dev@DB-78GB094:~/CARS_sim_2_ollama/demos/12-LLM_SIM_GPS_Message_Stream$ tree -I "__pycache__" -I "docs" -I "docs_old"
 .
+├── Readme.md
 ├── constellation_config.json
-├── enhanced_notification_gui.py
-├── gps_client_lib.py
-├── main_gui.py
-├── notification_gui.py
+├── docker-compose.yml
+├── gps_manager.py
+├── llm_config.py
+├── mcp_chatapp.py
 ├── requirements_config.json
-├── run_sim.py
 ├── sat_constellation.py
-├── tmp.md
-├── utils_gps_sim.py
-├── vehicle.py
+├── sim.py
+├── sim.py.old
+├── sim_helper_funcs.py
+├── sim_reqs_tracker.py
+├── startup.py
+├── static
+│   ├── css
+│   │   └── style.css
+│   └── js
+│       └── script.js
+├── templates
+│   └── index.html
+├── todo.md
 └── vehicle_requirements_tracker.py
 
-0 directories, 12 files
-(venv) dev@DB-78GB094:~/CARS_sim_2_ollama/demos/11-simple_NMEA_RCTM$ 
+4 directories, 18 files
+dev@DB-78GB094:~/CARS_sim_2_ollama/demos/12-LLM_SIM_GPS_Message_Stream$ 
 
 
 I just want to keep track of GPS module messages and IMU on agents
@@ -52,3 +62,12 @@ I just want to keep track of GPS module messages and IMU on agents
  - messages between LLM and user, then LLM and agents
  - telemetry (Qdrant)
  - GPS messages between agents and satellites/survey points
+
+
+
+i want to make sure all the NMEA messages and RTCM are part of the telemetry for every agent recorded to qdrant along side positioning and more. I would prefer if i could scale the environment/grid system that my agents move on to be similar to the world in terms of making viable coordinates. 
+ 
+also could you make a bash script to start everything in the backgroudn and print out what ports everything is on so i can visit the link in the web browser? then add the functionality to kill the processes using pgrep and kill for the specific script names if the argument stop is passed, so "./run.sh start" starts it and "./run.sh stop" stops it. or should i just keep startup.py? it seems startup.py is more straightforward.
+
+
+so what is the file structure I should expect now? tell me what files are being used and for what
