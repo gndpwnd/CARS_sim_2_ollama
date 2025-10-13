@@ -1,247 +1,449 @@
-// Global state
-let loading = false;
-let lastLogTimestamp = null;
-const seenLogIds = new Set();
+// Multi-Source Dashboard JavaScript
+(function() {
+    'use strict';
 
-// DOM elements
-document.addEventListener('DOMContentLoaded', () => {
-    const chatContainer = document.getElementById('chat-chat-container');
-    const logContainer = document.getElementById('log-container');
-    const messageForm = document.getElementById('message-form');
-    const messageInput = document.getElementById('message-input');
-    const loadingDiv = document.getElementById('loading');
-
-    // Utility: Create a div with classes and inner text
-    function createDiv(classes = [], text = '') {
-        const div = document.createElement('div');
-        div.classList.add(...classes);
-        div.innerText = String(text);  // force string conversion
-        return div;
-    }
-
-    // Enhanced message display with status indicators
-    function addMessage(message, type = 'bot', status = '') {
-        const messageDiv = createDiv([`${type}-message`], message);
-        if (status) {
-            messageDiv.classList.add(`message-${status}`);
-            const statusIndicator = document.createElement('span');
-            statusIndicator.className = 'status-indicator';
-            statusIndicator.textContent = status === 'success' ? '✓' : '✗';
-            messageDiv.prepend(statusIndicator);
+    // State Management
+    const state = {
+        postgresql: {
+            logs: new Set(),
+            streaming: false,
+            eventSource: null,
+            container: null,
+            toggle: null,
+            count: 0
+        },
+        qdrant: {
+            logs: new Set(),
+            streaming: false,
+            eventSource: null,
+            container: null,
+            toggle: null,
+            count: 0
+        },
+        chat: {
+            container: null,
+            form: null,
+            input: null
         }
-        chatContainer.appendChild(messageDiv);
-        chatContainer.scrollTop = chatContainer.scrollHeight;
-        return messageDiv;
+    };
+
+    // Initialize on DOM load
+    document.addEventListener('DOMContentLoaded', init);
+
+    function init() {
+        // Get DOM elements
+        state.postgresql.container = document.getElementById('postgresql-container');
+        state.postgresql.toggle = document.getElementById('pg-stream-toggle');
+        state.qdrant.container = document.getElementById('qdrant-container');
+        state.qdrant.toggle = document.getElementById('qdrant-stream-toggle');
+        state.chat.container = document.getElementById('chat-container');
+        state.chat.form = document.getElementById('message-form');
+        state.chat.input = document.getElementById('message-input');
+
+        // Verify all elements exist
+        if (!state.postgresql.container || !state.postgresql.toggle) {
+            console.error('PostgreSQL elements not found');
+            return;
+        }
+        if (!state.qdrant.container || !state.qdrant.toggle) {
+            console.error('Qdrant elements not found');
+            return;
+        }
+        if (!state.chat.container || !state.chat.form || !state.chat.input) {
+            console.error('Chat elements not found');
+            return;
+        }
+
+        // Setup event listeners
+        setupEventListeners();
+
+        // Initial data load
+        loadInitialData();
+
+        // Check system health
+        checkSystemHealth();
+        setInterval(checkSystemHealth, 30000); // Every 30s
     }
 
-    // Log UI
-    function addLog(log) {
-        if (seenLogIds.has(log.log_id)) return;
-        seenLogIds.add(log.log_id);
+    function setupEventListeners() {
+        // PostgreSQL stream toggle
+        state.postgresql.toggle.addEventListener('click', () => {
+            toggleStream('postgresql');
+        });
 
-        const { text, metadata = {} } = log;
-        const {
-            agent_id = 'N/A',
-            role = 'system',
-            timestamp = new Date().toISOString(),
-            jammed = null,
-            position = '',
-            communication_quality = '',
-            log_id = ''
-        } = metadata;
+        // Qdrant stream toggle
+        state.qdrant.toggle.addEventListener('click', () => {
+            toggleStream('qdrant');
+        });
 
-        const logDiv = createDiv(['log-message']);
-        if (role === 'user') logDiv.classList.add('user-log');
-        if (role === 'ollama') logDiv.classList.add('ollama-log');
+        // Chat form submission
+        state.chat.form.addEventListener('submit', handleChatSubmit);
 
-        logDiv.innerHTML = `
+        // Clear chat button
+        const clearChatBtn = document.getElementById('clear-chat');
+        if (clearChatBtn) {
+            clearChatBtn.addEventListener('click', () => {
+                state.chat.container.innerHTML = '';
+                addChatMessage('Chat cleared', 'bot', 'info');
+            });
+        }
+    }
+
+    async function loadInitialData() {
+        // Load PostgreSQL data
+        try {
+            const response = await fetch('/data/postgresql');
+            const data = await response.json();
+            if (data.logs && data.logs.length > 0) {
+                data.logs.forEach(log => addLog('postgresql', log));
+                updateCount('postgresql', state.postgresql.logs.size);
+            }
+        } catch (error) {
+            console.error('Failed to load PostgreSQL data:', error);
+            updateLoadingStatus('postgresql', 'Failed to load initial data', true);
+        }
+
+        // Load Qdrant data
+        try {
+            const response = await fetch('/data/qdrant');
+            const data = await response.json();
+            if (data.logs && data.logs.length > 0) {
+                data.logs.forEach(log => addLog('qdrant', log));
+                updateCount('qdrant', state.qdrant.logs.size);
+            }
+        } catch (error) {
+            console.error('Failed to load Qdrant data:', error);
+            updateLoadingStatus('qdrant', 'Failed to load initial data', true);
+        }
+
+        // Start streaming by default after a short delay
+        setTimeout(() => {
+            toggleStream('postgresql');
+            toggleStream('qdrant');
+        }, 1000);
+    }
+
+    function toggleStream(source) {
+        const streamState = state[source];
+        
+        if (streamState.streaming) {
+            stopStream(source);
+        } else {
+            startStream(source);
+        }
+    }
+
+    function startStream(source) {
+        const streamState = state[source];
+        const endpoint = `/stream/${source}`;
+
+        console.log(`Starting ${source} stream...`);
+        
+        streamState.eventSource = new EventSource(endpoint);
+        streamState.streaming = true;
+        
+        // Update button
+        streamState.toggle.classList.add('active');
+        streamState.toggle.innerHTML = '<span class="stream-icon">⏸️</span> Pause';
+
+        // Handle incoming messages
+        streamState.eventSource.onmessage = (event) => {
+            try {
+                const log = JSON.parse(event.data);
+                addLog(source, log);
+                updateCount(source, streamState.logs.size);
+            } catch (error) {
+                console.error(`Error parsing ${source} stream:`, error);
+            }
+        };
+
+        // Handle errors
+        streamState.eventSource.onerror = (error) => {
+            console.error(`${source} stream error:`, error);
+            updateLoadingStatus(source, 'Stream disconnected, retrying...', true);
+            
+            // Auto-reconnect after 3 seconds
+            setTimeout(() => {
+                if (streamState.streaming) {
+                    stopStream(source);
+                    startStream(source);
+                }
+            }, 3000);
+        };
+
+        // Handle open
+        streamState.eventSource.onopen = () => {
+            console.log(`${source} stream connected`);
+            updateLoadingStatus(source, '🔴 Live streaming', false);
+            updateStatusIndicator(source, 'online');
+        };
+    }
+
+    function stopStream(source) {
+        const streamState = state[source];
+        
+        if (streamState.eventSource) {
+            streamState.eventSource.close();
+            streamState.eventSource = null;
+        }
+        
+        streamState.streaming = false;
+        streamState.toggle.classList.remove('active');
+        streamState.toggle.innerHTML = '<span class="stream-icon">🔴</span> Live';
+        
+        updateLoadingStatus(source, 'Stream paused', false);
+        updateStatusIndicator(source, 'offline');
+    }
+
+    function addLog(source, log) {
+        const streamState = state[source];
+        const logId = log.log_id || log.id || `${source}-${Date.now()}-${Math.random()}`;
+        
+        // Prevent duplicates
+        if (streamState.logs.has(logId)) return;
+        streamState.logs.add(logId);
+
+        const logElement = createLogElement(log, source);
+        streamState.container.prepend(logElement);
+
+        // Limit displayed logs
+        const maxLogs = 100;
+        while (streamState.container.children.length > maxLogs) {
+            const removed = streamState.container.removeChild(streamState.container.lastChild);
+            const removedId = removed.dataset.logId;
+            if (removedId) {
+                streamState.logs.delete(removedId);
+            }
+        }
+
+        // Auto-scroll to top for new logs
+        if (streamState.container.scrollTop < 100) {
+            streamState.container.scrollTop = 0;
+        }
+    }
+
+    function createLogElement(log, source) {
+        const div = document.createElement('div');
+        div.className = 'log-message';
+        div.dataset.logId = log.log_id || log.id || `${source}-${Date.now()}`;
+        div.dataset.source = source;
+
+        const metadata = log.metadata || {};
+        const role = metadata.role || 'system';
+        const timestamp = metadata.timestamp || log.created_at || new Date().toISOString();
+        const agentId = metadata.agent_id || 'System';
+        const text = log.text || '';
+
+        // Add role-based styling
+        if (role === 'user') div.classList.add('user-log');
+        if (role === 'assistant' || role === 'ollama') div.classList.add('ollama-log');
+        if (role === 'system') div.classList.add('system-log');
+
+        // Build GPS info if available
+        let gpsInfo = '';
+        if (metadata.gps_fix_quality !== undefined || metadata.gps_satellites !== undefined) {
+            gpsInfo = '<div class="gps-info">';
+            if (metadata.gps_fix_quality !== undefined) {
+                gpsInfo += `<span class="gps-metric">Fix Quality: ${metadata.gps_fix_quality}</span>`;
+            }
+            if (metadata.gps_satellites !== undefined) {
+                gpsInfo += `<span class="gps-metric">Satellites: ${metadata.gps_satellites}</span>`;
+            }
+            if (metadata.gps_signal_quality !== undefined) {
+                gpsInfo += `<span class="gps-metric">Signal: ${metadata.gps_signal_quality.toFixed(1)} dB-Hz</span>`;
+            }
+            gpsInfo += '</div>';
+        }
+
+        // Build metadata display
+        let metaHtml = '';
+        if (metadata.position) {
+            metaHtml += `<span class="log-position">📍 ${escapeHtml(metadata.position)}</span>`;
+        }
+        if (metadata.jammed !== undefined) {
+            const jammedClass = metadata.jammed ? 'jammed' : 'clear';
+            const jammedText = metadata.jammed ? '🚫 Jammed' : '✅ Clear';
+            metaHtml += `<span class="log-status ${jammedClass}">${jammedText}</span>`;
+        }
+        if (metadata.communication_quality !== undefined) {
+            const commQuality = (metadata.communication_quality * 100).toFixed(0);
+            metaHtml += `<span class="log-quality">📡 Comm: ${commQuality}%</span>`;
+        }
+        if (log.log_id) {
+            const shortId = log.log_id.substring(0, 8);
+            metaHtml += `<span class="log-id">#${shortId}</span>`;
+        }
+
+        div.innerHTML = `
             <div class="log-header">
-                <strong>${role || agent_id}</strong>
+                <strong>${escapeHtml(agentId)}</strong>
                 <span class="log-time">${new Date(timestamp).toLocaleString()}</span>
             </div>
-            <div class="log-body">${text}</div>
+            <div class="log-body">${escapeHtml(text)}</div>
+            ${gpsInfo}
             <div class="log-meta">
-                ${position ? `<span class="log-position">@ ${position}</span>` : ''}
-                ${log_id ? `<span class="log-id">#${log_id}</span>` : ''}
-                ${jammed !== null ? `<span class="log-status ${jammed ? 'jammed' : 'clear'}">
-                    ${jammed ? '🚫 Jammed' : '✅ Clear'}
-                </span>` : ''}
-                ${communication_quality ? `<span class="log-quality">Comm: ${communication_quality}</span>` : ''}
+                ${metaHtml}
             </div>
         `;
 
-        logContainer.prepend(logDiv);
-        logContainer.scrollTop = 0;
+        return div;
     }
 
-    // Enhanced log loading with better error feedback
-    async function loadLogs() {
-        if (loading) return;
-        loading = true;
-        loadingDiv.textContent = "Loading logs...";
-        loadingDiv.classList.add('loading-active');
-
-        try {
-            const response = await fetch('/logs');
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            
-            const data = await response.json();
-            
-            if (!data?.logs) {
-                throw new Error("Invalid log data format");
-            }
-            
-            console.log(`Loaded ${data.logs.length} logs for RAG feed`);
-
-            if (data.logs.length) {
-                // Clear existing logs only if we have new ones
-                logContainer.innerHTML = '';
-                seenLogIds.clear();
-                
-                data.logs.forEach(log => {
-                    addLog(log);
-                    seenLogIds.add(log.log_id);
-                    
-                    const timestamp = log?.metadata?.timestamp;
-                    if (timestamp && (!lastLogTimestamp || new Date(timestamp) > new Date(lastLogTimestamp))) {
-                        lastLogTimestamp = timestamp;
-                    }
-                });
-                
-                loadingDiv.textContent = `Loaded ${data.logs.length} logs. Latest: ${new Date(lastLogTimestamp).toLocaleTimeString()}`;
-            } else {
-                loadingDiv.textContent = "No new logs available";
-            }
-        } catch (e) {
-            console.error("Error loading logs:", e);
-            loadingDiv.textContent = `Error: ${e.message}`;
-            loadingDiv.classList.add('error');
-            setTimeout(() => loadingDiv.classList.remove('error'), 2000);
-        } finally {
-            loadingDiv.classList.remove('loading-active');
-            loading = false;
+    function addChatMessage(message, type = 'bot', status = '') {
+        const div = document.createElement('div');
+        div.className = `${type}-message`;
+        
+        if (status) {
+            div.classList.add(`message-${status}`);
+            const statusIcon = status === 'success' ? '✓' : 
+                             status === 'error' ? '✗' : 'ℹ';
+            div.innerHTML = `<span class="status-indicator">${statusIcon}</span>${escapeHtml(message)}`;
+        } else {
+            div.textContent = message;
         }
+
+        state.chat.container.appendChild(div);
+        state.chat.container.scrollTop = state.chat.container.scrollHeight;
+        
+        return div;
     }
 
+    async function handleChatSubmit(event) {
+        event.preventDefault();
+        
+        const userInput = state.chat.input.value.trim();
+        if (!userInput) return;
 
-    async function sendCommand(command) {
+        // Display user message
+        addChatMessage(userInput, 'user');
+        state.chat.input.value = '';
+
+        // Show loading indicator
+        const loadingMsg = addChatMessage('Processing...', 'bot');
+
         try {
-            console.log("Sending command:", command);
             const response = await fetch('/llm_command', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: command })
+                body: JSON.stringify({ message: userInput })
             });
-    
+
             const data = await response.json();
-            console.log("Full response:", data);
-    
-            // Use actual response with fallback
-            const responseText = data?.response?.trim() || "No response received.";
-    
-            return {
-                success: !!data?.response?.trim(),
-                message: responseText,
-                raw: data,
-                liveData: data?.live_data || null  // Include live data in return
-            };
-    
-        } catch (err) {
-            return {
-                success: false,
-                message: err.message || "Command failed",
-                error: err
-            };
-        }
-    }
-    
-    messageForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const userInput = messageInput.value.trim();
-        if (!userInput) return;
-    
-        // Show user message
-        addMessage(userInput, 'user');
-        messageInput.value = '';
-        
-        // Show loading
-        const loadingIndicator = addMessage("Processing...", 'bot', 'loading');
-    
-        try {
-            const { success, message, raw, liveData } = await sendCommand(userInput);
             
-            // Remove loading
-            if (loadingIndicator.parentNode === chatContainer) {
-                chatContainer.removeChild(loadingIndicator);
+            // Remove loading message
+            if (loadingMsg.parentNode === state.chat.container) {
+                state.chat.container.removeChild(loadingMsg);
             }
-    
-            let style = 'success';
-            if (!success || message.includes('Error') || message.includes('not found') || message.includes('Invalid')) {
-                style = 'error';
-            } else if (message === "Not a movement command") {
-                style = 'info';
-            }
-    
-            // Show formatted response
-            const responseDiv = addMessage(message, 'bot', style);
+
+            // Determine message status
+            let status = 'success';
+            const responseText = data.response || 'No response received';
             
-            // Add live data visualization if available
-            if (liveData) {
-                const liveDataDiv = createDiv(['live-data-container']);
+            if (responseText.includes('Error') || responseText.includes('Failed')) {
+                status = 'error';
+            } else if (responseText === 'Not a movement command') {
+                status = 'info';
+            }
+
+            // Display response
+            const responseMsg = addChatMessage(responseText, 'bot', status);
+
+            // Add live data if available
+            if (data.live_data) {
+                const liveDataDiv = document.createElement('div');
+                liveDataDiv.className = 'live-data-container';
                 
-                Object.entries(liveData).forEach(([agentId, data]) => {
-                    if (data) {
-                        const agentDiv = createDiv(['live-agent-data']);
+                Object.entries(data.live_data).forEach(([agentId, agentData]) => {
+                    if (agentData) {
+                        const agentDiv = document.createElement('div');
+                        agentDiv.className = 'live-agent-data';
                         agentDiv.innerHTML = `
-                            <strong>${agentId}</strong>:
-                            Position (${data.x?.toFixed(2)}, ${data.y?.toFixed(2)})
-                            | Comm: ${(data.communication_quality * 100).toFixed(0)}%
-                            | ${data.jammed ? '🚫 Jammed' : '✅ Clear'}
+                            <strong>${escapeHtml(agentId)}</strong>:
+                            Position (${agentData.x?.toFixed(2)}, ${agentData.y?.toFixed(2)})
+                            | Comm: ${(agentData.communication_quality * 100).toFixed(0)}%
+                            | ${agentData.jammed ? '🚫 Jammed' : '✅ Clear'}
                         `;
                         liveDataDiv.appendChild(agentDiv);
                     }
                 });
                 
-                responseDiv.appendChild(liveDataDiv);
+                responseMsg.appendChild(liveDataDiv);
             }
-    
-            // Refresh logs
-            setTimeout(loadLogs, 1000);
-    
-        } catch (err) {
-            console.error("Error:", err);
-            if (loadingIndicator.parentNode === chatContainer) {
-                chatContainer.removeChild(loadingIndicator);
-            }
-            addMessage(`Error: ${err.message}`, 'bot', 'error');
-        }
-    });
-    
 
-    // Log polling with backoff on errors
-    function startLogPolling() {
-        const pollInterval = 3000;
-        
-        const poll = async () => {
-            if (loading) {
-                setTimeout(poll, pollInterval);
-                return;
+        } catch (error) {
+            console.error('Chat error:', error);
+            
+            if (loadingMsg.parentNode === state.chat.container) {
+                state.chat.container.removeChild(loadingMsg);
             }
             
-            try {
-                await loadLogs();
-            } catch (e) {
-                console.error("Polling error:", e);
-            } finally {
-                setTimeout(poll, pollInterval);
-            }
-        };
-        
-        console.log(`Starting log polling every ${pollInterval}ms`);
-        poll();
+            addChatMessage(`Error: ${error.message}`, 'bot', 'error');
+        }
     }
 
-    // Initial load
-    loadLogs();
-    startLogPolling();
-});
+    function updateCount(source, count) {
+        const countElement = document.getElementById(`${source === 'postgresql' ? 'pg' : 'qdrant'}-count`);
+        if (countElement) {
+            countElement.textContent = count;
+        }
+    }
+
+    function updateLoadingStatus(source, message, isError) {
+        const loadingElement = document.getElementById(`${source === 'postgresql' ? 'pg' : 'qdrant'}-loading`);
+        if (loadingElement) {
+            loadingElement.textContent = message;
+            loadingElement.classList.toggle('error', isError);
+            loadingElement.classList.toggle('active', !isError);
+        }
+    }
+
+    function updateStatusIndicator(source, status) {
+        let indicatorId;
+        if (source === 'postgresql') indicatorId = 'pg-status';
+        else if (source === 'qdrant') indicatorId = 'qdrant-status';
+        else if (source === 'simulation') indicatorId = 'sim-status';
+        
+        const indicator = document.getElementById(indicatorId);
+        if (indicator) {
+            indicator.className = `status-indicator ${status}`;
+        }
+    }
+
+    async function checkSystemHealth() {
+        try {
+            const response = await fetch('/health');
+            const health = await response.json();
+            
+            // Update status indicators
+            updateStatusIndicator('postgresql', 'online');
+            updateStatusIndicator('simulation', 
+                health.simulation_api === 'online' ? 'online' : 'offline'
+            );
+            
+            // Check Qdrant status
+            if (health.qdrant === 'available') {
+                updateStatusIndicator('qdrant', 'online');
+            } else {
+                updateStatusIndicator('qdrant', 'offline');
+            }
+            
+        } catch (error) {
+            console.error('Health check failed:', error);
+            updateStatusIndicator('postgresql', 'offline');
+            updateStatusIndicator('qdrant', 'offline');
+            updateStatusIndicator('simulation', 'offline');
+        }
+    }
+
+    // Utility function to escape HTML
+    function escapeHtml(unsafe) {
+        if (unsafe === null || unsafe === undefined) return '';
+        return String(unsafe)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+})();

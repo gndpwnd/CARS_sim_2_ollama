@@ -287,12 +287,12 @@ docker compose logs -f
 python startup.py
 
 # Output will show:
-# - Satellite Constellation Server on tcp://127.0.0.1:12345
-# - Agent Simulation on http://127.0.0.1:5001
-# - MCP Chatapp on http://127.0.0.1:5000
+# - Satellite Constellation Server on tcp://0.0.0.0:12345
+# - Agent Simulation on http://0.0.0.0:5001
+# - MCP Chatapp on http://0.0.0.0:5000
 
 # Access the web interface
-# Open browser to: http://127.0.0.1:5000
+# Open browser to: http://0.0.0.0:5000
 
 # Stop all services
 # Press Ctrl+C in the terminal running startup.py
@@ -316,7 +316,7 @@ python sim.py
 # Terminal 5: Start MCP Chatapp
 python mcp_chatapp.py
 
-# Access web interface at http://127.0.0.1:5000
+# Access web interface at http://0.0.0.0:5000
 ```
 
 ## Detailed Usage
@@ -370,16 +370,16 @@ Expected output:
 [STARTUP] All components started successfully!
 
 Access points:
-  • MCP Chatapp:          http://127.0.0.1:5000
-  • Simulation API:       http://127.0.0.1:5001
-  • Constellation Server: tcp://127.0.0.1:12345
+  • MCP Chatapp:          http://0.0.0.0:5000
+  • Simulation API:       http://0.0.0.0:5001
+  • Constellation Server: tcp://0.0.0.0:12345
 
 Press Ctrl+C to stop all services
 ```
 
 ### Using the Web Interface
 
-1. **Open Browser**: Navigate to `http://127.0.0.1:5000`
+1. **Open Browser**: Navigate to `http://0.0.0.0:5000`
 
 2. **RAG Feed (Left Panel)**:
    - Shows real-time log entries from all agents
@@ -410,13 +410,13 @@ Press Ctrl+C to stop all services
 "What's the GPS fix quality for agent2?"
 
 # Direct API calls (for automation)
-curl -X POST http://127.0.0.1:5001/move_agent \
+curl -X POST http://0.0.0.0:5001/move_agent \
   -H "Content-Type: application/json" \
   -d '{"agent": "agent1", "x": 5.0, "y": 5.0}'
 
-curl http://127.0.0.1:5001/status
+curl http://localhost:5001/status
 
-curl http://127.0.0.1:5001/gps_status
+curl http://localhost:5001/gps_status
 ```
 
 ### Stopping the System
@@ -698,7 +698,7 @@ print('Connected:', client.connect())
 
 ```bash
 # Check MCP server
-curl http://127.0.0.1:5000/test
+curl http://localhost:5000/test
 
 # Check static files exist
 ls static/css/style.css

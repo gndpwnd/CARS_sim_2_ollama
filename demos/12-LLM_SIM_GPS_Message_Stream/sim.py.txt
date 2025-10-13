@@ -643,7 +643,7 @@ async def log_requests(request: Request, call_next):
 
 def run_api_server():
     """Run FastAPI server in a separate thread"""
-    uvicorn.run(app, host="127.0.0.1", port=5001)
+    uvicorn.run(app, host="0.0.0.0", port=5001)
 
 if __name__ == "__main__":
     print(f"Running simulation with {'LLM' if USE_LLM else 'Algorithm'} control")

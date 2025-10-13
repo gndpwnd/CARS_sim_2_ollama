@@ -52,7 +52,7 @@ class GPSData:
 class GPSClient:
     """Client for requesting GPS data from satellite constellation"""
     
-    def __init__(self, constellation_host: str = "localhost", 
+    def __init__(self, constellation_host: str = "0.0.0.0", 
                  constellation_port: int = 12345):
         self.host = constellation_host
         self.port = constellation_port
@@ -160,7 +160,7 @@ class GPSClient:
 class AgentGPSManager:
     """Manages GPS data requests for all agents in simulation"""
     
-    def __init__(self, constellation_host: str = "localhost",
+    def __init__(self, constellation_host: str = "0.0.0.0",
                  constellation_port: int = 12345,
                  base_latitude: float = 40.7128,
                  base_longitude: float = -74.0060):

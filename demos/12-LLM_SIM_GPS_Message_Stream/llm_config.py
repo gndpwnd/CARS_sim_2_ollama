@@ -1,5 +1,6 @@
 # LLM configuration (shared between all components)
-LLM_MODEL = "llama3.3:70b-instruct-q5_K_M"  # Specify the model once
+#LLM_MODEL = "llama3.3:70b-instruct-q5_K_M"  # Specify the model once
+LLM_MODEL = "llama3:8b"
 import ollama
 
 def get_ollama_client():
