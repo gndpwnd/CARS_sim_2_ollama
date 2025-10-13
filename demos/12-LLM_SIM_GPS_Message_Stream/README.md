@@ -229,6 +229,11 @@ sequenceDiagram
 sudo apt install -y docker.io docker-compose; sudo groupadd docker; sudo usermod -aG docker $USER; sudo systemctl start docker; sudo systemctl enable docker; newgrp docker; DOCKER_CONFIG=${DOCKER_CONFIG:-$HOME/.docker}; mkdir -p $DOCKER_CONFIG/cli-plugins; curl -SL https://github.com/docker/compose/releases/download/v2.35.0/docker-compose-linux-x86_64 -o $DOCKER_CONFIG/cli-plugins/docker-compose; chmod +x $DOCKER_CONFIG/cli-plugins/docker-compose; docker compose version
 ```
 
+```bash
+sudo apt update
+sudo apt install python3-tk
+```
+
 2. **Ollama**
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
