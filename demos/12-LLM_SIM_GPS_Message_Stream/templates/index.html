@@ -4,27 +4,43 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Multi-Agent Simulation Dashboard</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+    
+    <!-- CSS Files -->
+    <link rel="stylesheet" href="{{ url_for('static', path='css/base.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/header.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/columns.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/logs.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/chat.css') }}">
 </head>
 <body>
+    <!-- Header with System Status -->
     <div id="header">
         <h1>🚀 Multi-Agent Simulation Dashboard</h1>
         <div id="status-bar">
             <span class="status-item">
                 <span class="status-label">PostgreSQL:</span>
-                <span id="pg-status" class="status-indicator">●</span>
+                <span id="pg-status" class="status-indicator offline"></span>
+                <span id="pg-status-text">Checking...</span>
             </span>
             <span class="status-item">
                 <span class="status-label">Qdrant:</span>
-                <span id="qdrant-status" class="status-indicator">●</span>
+                <span id="qdrant-status" class="status-indicator offline"></span>
+                <span id="qdrant-status-text">Checking...</span>
             </span>
             <span class="status-item">
                 <span class="status-label">Simulation:</span>
-                <span id="sim-status" class="status-indicator">●</span>
+                <span id="sim-status" class="status-indicator offline"></span>
+                <span id="sim-status-text">Checking...</span>
+            </span>
+            <span class="status-item">
+                <span class="status-label">LLM (Ollama):</span>
+                <span id="llm-status" class="status-indicator offline"></span>
+                <span id="llm-status-text">Checking...</span>
             </span>
         </div>
     </div>
 
+    <!-- Main 3-Column Layout -->
     <div id="main-container">
         <!-- Left Column: PostgreSQL Feed -->
         <div class="data-column" id="postgresql-column">
@@ -32,13 +48,15 @@
                 <h2>📊 PostgreSQL Feed</h2>
                 <div class="column-controls">
                     <button id="pg-stream-toggle" class="stream-toggle-btn">
-                        <span class="stream-icon">🔴</span> Live
+                        <span class="stream-icon">🔴</span> Start Live
                     </button>
                     <span id="pg-count" class="count-badge">0</span>
                 </div>
             </div>
-            <div id="postgresql-container" class="data-container"></div>
-            <div id="pg-loading" class="loading-indicator">Loading...</div>
+            <div id="postgresql-container" class="data-container">
+                <div class="empty-state">Waiting for data...</div>
+            </div>
+            <div id="pg-loading" class="loading-indicator">Ready to stream</div>
         </div>
 
         <!-- Middle Column: Qdrant Feed -->
@@ -47,13 +65,15 @@
                 <h2>🎯 Qdrant Vector DB</h2>
                 <div class="column-controls">
                     <button id="qdrant-stream-toggle" class="stream-toggle-btn">
-                        <span class="stream-icon">🔴</span> Live
+                        <span class="stream-icon">🔴</span> Start Live
                     </button>
                     <span id="qdrant-count" class="count-badge">0</span>
                 </div>
             </div>
-            <div id="qdrant-container" class="data-container"></div>
-            <div id="qdrant-loading" class="loading-indicator">Loading...</div>
+            <div id="qdrant-container" class="data-container">
+                <div class="empty-state">Waiting for data...</div>
+            </div>
+            <div id="qdrant-loading" class="loading-indicator">Ready to stream</div>
         </div>
 
         <!-- Right Column: Chat Interface -->
@@ -64,14 +84,33 @@
                     <button id="clear-chat" class="control-btn">Clear</button>
                 </div>
             </div>
-            <div id="chat-container" class="data-container"></div>
+            <div id="chat-container" class="data-container">
+                <div class="welcome-message">
+                    <h3>Welcome to Agent Control</h3>
+                    <p>Send commands like:</p>
+                    <ul>
+                        <li>"move agent1 to 5, 5"</li>
+                        <li>"what is the status of agent2?"</li>
+                        <li>"show all agent positions"</li>
+                    </ul>
+                </div>
+            </div>
             <form id="message-form">
-                <input type="text" id="message-input" placeholder="Type a command (e.g., 'move agent1 to 5, 5')..." required>
+                <input type="text" id="message-input" 
+                       placeholder="Type a command (e.g., 'move agent1 to 5, 5')..." 
+                       required autocomplete="off">
                 <button type="submit">Send</button>
             </form>
         </div>
     </div>
 
-    <script src="/static/js/script.js"></script>
+    <!-- JavaScript Files (Order matters!) -->
+    <script src="{{ url_for('static', path='js/utils.js') }}"></script>
+    <script src="{{ url_for('static', path='js/state.js') }}"></script>
+    <script src="{{ url_for('static', path='js/health.js') }}"></script>
+    <script src="{{ url_for('static', path='js/logs.js') }}"></script>
+    <script src="{{ url_for('static', path='js/streaming.js') }}"></script>
+    <script src="{{ url_for('static', path='js/chat.js') }}"></script>
+    <script src="{{ url_for('static', path='js/main.js') }}"></script>
 </body>
 </html>
