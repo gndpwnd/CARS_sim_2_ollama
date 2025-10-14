@@ -233,13 +233,18 @@ class GPSRequirementsNotificationGUI(QMainWindow):
         self.start_update_timer()
     
     def setup_ui(self):
+        """Setup the main window UI"""
+        print("[DASHBOARD] Setting up UI...")
         self.setWindowTitle("GPS Requirements Notification Dashboard")
-        self.setGeometry(100, 100, 1200, 800)
+        self.setGeometry(200, 200, 1200, 800)  # Offset from main window
+        
+        # Force window to front initially
+        self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         
         # Main widget
-        main_widget = QWidget()
-        self.setCentralWidget(main_widget)
-        main_layout = QVBoxLayout(main_widget)
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(10, 10, 10, 10)
         
         # Header
@@ -327,12 +332,18 @@ class GPSRequirementsNotificationGUI(QMainWindow):
     def initialize_agents(self):
         """Initialize tabs for all tracked agents."""
         if not self.requirements_monitor:
+            print("[DASHBOARD] No requirements monitor provided")
             return
         
-        agent_ids = self.requirements_monitor.get_all_vehicle_ids()
-        
-        for agent_id in agent_ids:
-            self.add_agent_tab(agent_id)
+        try:
+            agent_ids = self.requirements_monitor.get_all_vehicle_ids()
+            print(f"[DASHBOARD] Found {len(agent_ids)} agents: {agent_ids}")
+            
+            for agent_id in agent_ids:
+                self.add_agent_tab(agent_id)
+                
+        except Exception as e:
+            print(f"[DASHBOARD] Error initializing agents: {e}")
     
     def add_agent_tab(self, agent_id: str):
         """Add a tab for a specific agent."""
@@ -342,28 +353,37 @@ class GPSRequirementsNotificationGUI(QMainWindow):
         if not self.requirements_monitor:
             return
         
-        # Get requirements data for the agent
-        req_data = self.requirements_monitor.get_vehicle_requirements_data(agent_id)
-        
-        if not req_data:
-            return
-        
-        # Create tab
-        agent_tab = AgentTab(agent_id, req_data)
-        self.agent_tabs[agent_id] = agent_tab
-        
-        # Add to tab widget
-        self.tab_widget.addTab(agent_tab, agent_id)
+        try:
+            # Get requirements data for the agent
+            req_data = self.requirements_monitor.get_vehicle_requirements_data(agent_id)
+            
+            if not req_data:
+                print(f"[DASHBOARD] No requirements data for {agent_id}")
+                return
+            
+            # Create tab
+            agent_tab = AgentTab(agent_id, req_data)
+            self.agent_tabs[agent_id] = agent_tab
+            
+            # Add to tab widget
+            self.tab_widget.addTab(agent_tab, agent_id)
+            print(f"[DASHBOARD] Added tab for {agent_id}")
+            
+        except Exception as e:
+            print(f"[DASHBOARD] Error adding tab for {agent_id}: {e}")
     
     def update_all_agents(self):
         """Update all agent tabs with latest data."""
         if not self.requirements_monitor:
             return
         
-        for agent_id, agent_tab in self.agent_tabs.items():
-            updated_data = self.requirements_monitor.get_vehicle_requirements_data(agent_id)
-            if updated_data:
-                agent_tab.update_indicators(updated_data)
+        try:
+            for agent_id, agent_tab in self.agent_tabs.items():
+                updated_data = self.requirements_monitor.get_vehicle_requirements_data(agent_id)
+                if updated_data:
+                    agent_tab.update_indicators(updated_data)
+        except Exception as e:
+            print(f"[DASHBOARD] Error updating agents: {e}")
     
     def start_update_timer(self):
         """Start automatic update timer."""
@@ -373,7 +393,8 @@ class GPSRequirementsNotificationGUI(QMainWindow):
     
     def closeEvent(self, event):
         """Handle window close event."""
-        self.update_timer.stop()
+        if hasattr(self, 'update_timer'):
+            self.update_timer.stop()
         event.accept()
 
 

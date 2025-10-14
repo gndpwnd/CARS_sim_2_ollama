@@ -51,6 +51,14 @@ class SimulationRequirementsMonitor:
         self.tracker.remove_vehicle(agent_id)
         print(f"[REQ MONITOR] Removed {agent_id} from requirements monitoring")
     
+    def get_all_vehicle_ids(self) -> List[str]:
+        """Get list of all tracked vehicle IDs - delegates to tracker"""
+        return self.tracker.get_all_vehicle_ids()
+    
+    def get_vehicle_requirements_data(self, agent_id: str) -> Dict[str, Any]:
+        """Get requirements data for a vehicle - delegates to tracker"""
+        return self.tracker.get_vehicle_requirements_data(agent_id)
+    
     def update_from_gps_data(self, agent_id: str, gps_data: GPSData):
         """
         Update requirements metrics from GPS data
