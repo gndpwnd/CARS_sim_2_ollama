@@ -59,10 +59,17 @@ OLLAMA_HOST=127.0.0.1:11435 ollama run llama3.3:70b-instruct-q5_K_M
 
 
 
+then how could i run multiple models at the same time and be able to choose which onese to stop?
 I would like to be able to manage multiple models. is there a way to, when running status check, see the model runners and classify each model by a number, like the first model is [1] and the second is [2], then if running --stop [1], it will stop the first model. this way numbers can change, but if --stop [x] is run right after a status check, you should have numbers that line up and correspond to the model accurately, i would like a list during status like:
 
 [1] gemma2:2b
 
 [2] llama3:8b
 
-etc... but then when i run --stop by itself, it will stop everything
+ etc... but then when i run --stop by itself, it will stop everything
+
+this way i can simple keep running ./launch_ollama.sh --model {model} and run whatever models i need
+
+
+
+the model cannot be pulled on the GPU because it has no internet, you must start the ollama server on the vega to pull models, then stop the ollama on vega, switch to GPU and restart the ollama server in order to leverage the GPU
