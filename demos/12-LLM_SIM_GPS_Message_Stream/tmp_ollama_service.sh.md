@@ -1,4 +1,4 @@
-ok, now i want to do the ssh jump and command automation, similare to the following:
+i want to do the ssh jump and command automation, similare to the following:
 
 
 ssh nelsg10@vegaln1.erau.edu "ssh nelsg10@gpu02 'OLLAMA_HOST=127.0.0.1:11435 ollama serve & sleep 3; ps aux | grep ollama'"
@@ -37,3 +37,32 @@ or would it be better to have a small bash script on my local machine so that wh
 
 
 then also as part of startup and shutdown, i want to have the ssh jump all the way from my local machine from the gpu, and forward port 11435 on the gpu to 11434 on my local machine 
+
+
+these are the commands i normally use:
+
+Terminal #2
+
+ssh nelsg10@vegaln1.erau.edu
+ 
+ssh nelsg10@gpu02
+OLLAMA_HOST=127.0.0.1:11435 ollama serve &
+ps aux | grep ollama
+kill <PID>
+
+Terminal #3
+
+ssh -L 11434:127.0.0.1:11435 -J nelsg10@vegaln1.erau.edu nelsg10@gpu02
+OLLAMA_HOST=127.0.0.1:11435 ollama list
+OLLAMA_HOST=127.0.0.1:11435 ollama run llama3.3:70b-instruct-q5_K_M
+
+
+
+
+I would like to be able to manage multiple models. is there a way to, when running status check, see the model runners and classify each model by a number, like the first model is [1] and the second is [2], then if running --stop [1], it will stop the first model. this way numbers can change, but if --stop [x] is run right after a status check, you should have numbers that line up and correspond to the model accurately, i would like a list during status like:
+
+[1] gemma2:2b
+
+[2] llama3:8b
+
+etc... but then when i run --stop by itself, it will stop everything
