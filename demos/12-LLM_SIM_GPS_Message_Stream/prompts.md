@@ -71,3 +71,9 @@ currently, my mcp chatapp is getting a "No response received". this is a demo MC
 then for the simulation itself, i do not see the streams of NMEA messages between the satelites and the agents in the postgresql stream, i guess i would like to add this data collection as well. I then want to mention that none of the agents seem to be moving toward the mission endpoint, they just seem to be having their gps information updated as iteration of the simulation occurs. I want the agents to move toward the mission endpoint unless they are jammed, in which case they should try to recover as mentioned before.
 
 please show me what files need to be updated and what functions need to be changed. I want to make minimal changes but at the same time really make the whole thing simpler to meet my requirements.
+
+
+
+
+
+ok, now agents are moving, they are just not properly reacting to the jamming zones, I want to be able to add jamming zones while the simulation is running to simulate dynamic jamming, so i can keep it going the agents are navigating and they have to deal with dynamic jamming zones. keep everything as is, its just that they don't react to being in the jammed zone. they need to go back to the last position they were not jammed at. also, if an agent becomes entered into a newly made jamming zone, and they return to their prvious position and are still jammed, then they need to retrace their steps further and keep going to previous positions in their hisotry until they are not jammed, then they can continue, the jamming zone may go away and then that agent would simply resume its route and go to the mission end point. then on my messages streaming i am not seeing agent positions, jamming status, and GPS requirements on the data being streamd from qdrant. then i do not see the actaul NMEA being sent to and from agents and the GPS constellation, this needs to be added to the postgresql and streamed.

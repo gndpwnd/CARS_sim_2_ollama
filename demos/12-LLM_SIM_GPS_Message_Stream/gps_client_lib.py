@@ -82,80 +82,85 @@ class GPSClient:
         self.connected = False
         print("[GPS CLIENT] Disconnected from constellation")
     
+
     def request_gps_data(self, vehicle_id: str, latitude: float, longitude: float,
                         altitude: float = 10.0, speed: float = 0.0, heading: float = 0.0,
                         gps_denied: bool = False, jamming_level: float = 0.0,
                         environmental_factor: float = 1.0) -> Optional[GPSData]:
         """
-        Request GPS data from satellite constellation
-        
-        Args:
-            vehicle_id: Unique identifier for the vehicle/agent
-            latitude: Current latitude in degrees
-            longitude: Current longitude in degrees
-            altitude: Current altitude in meters
-            speed: Current speed in m/s
-            heading: Current heading in degrees
-            gps_denied: Whether GPS is completely denied
-            jamming_level: Jamming intensity (0-100%)
-            environmental_factor: Environmental signal degradation factor
-            
-        Returns:
-            GPSData object or None if request failed
+        Request GPS data from satellite constellation with fallback
         """
+        # If GPS is denied or constellation unavailable, generate basic NMEA locally
+        if gps_denied or jamming_level > 90:
+            return self._generate_local_gps_data(vehicle_id, latitude, longitude, 
+                                            jamming_level, gps_denied)
+        
         if not self.connected:
             if not self.connect():
-                return None
-        
-        # Prepare request
-        request = {
-            "vehicle_id": vehicle_id,
-            "latitude": latitude,
-            "longitude": longitude,
-            "altitude": altitude,
-            "speed": speed,
-            "heading": heading,
-            "gps_denied": gps_denied,
-            "jamming_level": jamming_level,
-            "environmental_factor": environmental_factor
-        }
-        
-        try:
-            # Send request
-            request_data = json.dumps(request).encode('utf-8')
-            self.socket.send(request_data)
-            
-            # Receive response
-            response_data = self.socket.recv(8192)
-            if not response_data:
-                self.connected = False
-                return None
-            
-            response = json.loads(response_data.decode('utf-8'))
-            
-            # Check for error
-            if 'error' in response:
-                print(f"[GPS CLIENT] Error: {response['error']}")
-                return None
-            
-            # Create GPSData object
-            gps_data = GPSData(
-                vehicle_id=response['vehicle_id'],
-                nmea_sentences=response['nmea_sentences'],
-                rtcm_messages=response['rtcm_messages'],
-                satellite_count=response['satellite_count'],
-                fix_quality=response['fix_quality'],
-                signal_quality=response['signal_quality'],
-                timestamp=response['timestamp']
-            )
-            
-            return gps_data
-            
-        except Exception as e:
-            print(f"[GPS CLIENT] Request failed: {e}")
-            self.connected = False
-            return None
+                print(f"[GPS CLIENT] Constellation unavailable, using local fallback")
+                return self._generate_local_gps_data(vehicle_id, latitude, longitude, 
+                                                jamming_level, False)
 
+    def _generate_local_gps_data(self, vehicle_id: str, latitude: float, longitude: float,
+                           jamming_level: float, gps_denied: bool) -> GPSData:
+        """Generate basic GPS data locally when constellation is unavailable"""
+        import time
+        import math
+        
+        if gps_denied:
+            # No GPS available
+            nmea_sentences = ["$GPGGA,,,,,,0,0,,,M,,M,,*56"]
+            satellite_count = 0
+            fix_quality = 0
+            signal_quality = 0.0
+        else:
+            # Degraded GPS based on jamming level
+            base_sats = max(4, 12 - int(jamming_level / 10))
+            satellite_count = random.randint(max(0, base_sats - 2), base_sats)
+            fix_quality = 1 if satellite_count >= 4 else 0
+            signal_quality = max(20.0, 45.0 - jamming_level * 0.3)
+            
+            # Generate basic GGA sentence
+            nmea_sentences = [self._generate_local_gga(latitude, longitude, 
+                                                    satellite_count, fix_quality)]
+        
+        return GPSData(
+            vehicle_id=vehicle_id,
+            nmea_sentences=nmea_sentences,
+            rtcm_messages=[],
+            satellite_count=satellite_count,
+            fix_quality=fix_quality,
+            signal_quality=signal_quality,
+            timestamp=time.time()
+        )
+
+    def _generate_local_gga(self, lat: float, lon: float, sats: int, fix_quality: int) -> str:
+        """Generate a basic GGA NMEA sentence locally"""
+        from datetime import datetime
+        
+        # Convert coordinates to NMEA format
+        lat_abs = abs(lat)
+        lat_deg = int(lat_abs)
+        lat_min = (lat_abs - lat_deg) * 60
+        lat_dir = 'N' if lat >= 0 else 'S'
+        lat_str = f"{lat_deg:02d}{lat_min:06.3f}"
+        
+        lon_abs = abs(lon)
+        lon_deg = int(lon_abs)
+        lon_min = (lon_abs - lon_deg) * 60
+        lon_dir = 'E' if lon >= 0 else 'W'
+        lon_str = f"{lon_deg:03d}{lon_min:06.3f}"
+        
+        time_str = datetime.utcnow().strftime("%H%M%S.000")
+        
+        sentence = f"GPGGA,{time_str},{lat_str},{lat_dir},{lon_str},{lon_dir},{fix_quality},{sats:02d},1.0,0.0,M,0.0,M,,"
+        
+        # Calculate checksum
+        checksum = 0
+        for char in sentence:
+            checksum ^= ord(char)
+        
+        return f"${sentence}*{checksum:02X}"
 
 class AgentGPSManager:
     """Manages GPS data requests for all agents in simulation"""

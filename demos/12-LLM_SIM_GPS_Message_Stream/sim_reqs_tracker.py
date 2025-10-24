@@ -301,6 +301,48 @@ class SimulationRequirementsMonitor:
                 print(f"[REQ MONITOR] Error in monitor loop: {e}")
                 time.sleep(self.update_interval)
 
+    def get_basic_jamming_status(self, agent_id: str) -> Dict[str, Any]:
+        """Get simplified jamming status for an agent"""
+        try:
+            req_data = self.get_vehicle_requirements_data(agent_id)
+            if not req_data:
+                return {"status": "unknown", "jammed": False}
+            
+            # Extract basic metrics
+            jamming_level = 0.0
+            satellites = 0
+            signal_quality = 0.0
+            fix_quality = 0
+            
+            # Look through the requirements data for key metrics
+            for section_name, section_data in req_data.items():
+                for subsection_name, subsection_data in section_data.items():
+                    for req_name, req_info in subsection_data.items():
+                        if 'jamming' in req_name.lower():
+                            jamming_level = req_info['current_value']
+                        elif 'satellite' in req_name.lower():
+                            satellites = int(req_info['current_value'])
+                        elif 'signal' in req_name.lower():
+                            signal_quality = req_info['current_value']
+                        elif 'fix' in req_name.lower():
+                            fix_quality = int(req_info['current_value'])
+            
+            # Simple jamming detection
+            is_jammed = (jamming_level > 50 or satellites < 4 or fix_quality == 0)
+            
+            return {
+                "jammed": is_jammed,
+                "jamming_level": jamming_level,
+                "satellites": satellites,
+                "signal_quality": signal_quality,
+                "fix_quality": fix_quality,
+                "status": "CRITICAL" if is_jammed else "OK"
+            }
+            
+        except Exception as e:
+            print(f"[REQ MONITOR] Error getting basic status: {e}")
+            return {"status": "error", "jammed": False}
+
 
 # Integration helper functions for use in simulation
 def create_requirements_monitor():

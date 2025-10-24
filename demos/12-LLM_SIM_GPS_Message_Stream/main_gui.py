@@ -465,6 +465,7 @@ class GPSSimulationGUI(QMainWindow):
             
             if not self.agent_paths[agent_id] or len(self.agent_paths[agent_id]) == 0:
                 if self.jammed_positions[agent_id]:
+                    # Jamming recovery behavior
                     if USE_LLM:
                         next_pos = llm_make_move(
                             agent_id, self.swarm_pos_dict, num_history_segments,
@@ -483,20 +484,22 @@ class GPSSimulationGUI(QMainWindow):
                         last_position, next_pos, max_movement_per_step
                     )
                 
-                elif self.agent_targets[agent_id]:
-                    target = self.agent_targets[agent_id]
-                    self.agent_paths[agent_id] = linear_path(
-                        last_position, target, max_movement_per_step
-                    )
+                else:
+                    # NORMAL BEHAVIOR: Move toward mission endpoint
+                    target = mission_end
                     
+                    # Only create new path if we don't have one or are close to current target
                     dist_to_target = math.sqrt(
                         (last_position[0] - target[0])**2 + 
                         (last_position[1] - target[1])**2
                     )
-                    if dist_to_target < max_movement_per_step:
-                        self.agent_targets[agent_id] = None
-                        print(f"{agent_id} reached target {target}")
-            
+                    
+                    if dist_to_target > max_movement_per_step:
+                        self.agent_paths[agent_id] = linear_path(
+                            last_position, target, max_movement_per_step
+                        )
+                        print(f"[MOVEMENT] {agent_id} moving toward mission endpoint {target}")
+
             if self.agent_paths[agent_id] and len(self.agent_paths[agent_id]) > 0:
                 next_pos = self.agent_paths[agent_id].pop(0)
                 limited_pos = limit_movement(last_position, next_pos, max_movement_per_step)
