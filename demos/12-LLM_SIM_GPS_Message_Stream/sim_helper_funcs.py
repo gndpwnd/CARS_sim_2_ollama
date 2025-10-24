@@ -23,15 +23,19 @@ def convert_numpy_coords(obj):
         return tuple(converted) if isinstance(obj, tuple) else converted
     elif isinstance(obj, dict):
         return {key: convert_numpy_coords(value) for key, value in obj.items()}
-    return obj  # Unchanged types
+    return obj
 
 def log_batch_of_data(agent_histories, add_log, prefix="batch"):
     """
-    Log a batch of data from all agents. One log per agent per data point.
+    Log a batch of data from all agents to PostgreSQL
+    This logs agent telemetry as 'telemetry' or 'error' messages
+    
+    NOTE: Position/GPS data should primarily go to Qdrant.
+    This function logs summaries/notifications to PostgreSQL.
     
     Parameters:
         agent_histories (dict): Mapping of agent_id to list of data points
-        add_log (function): Function to add logs to the RAG store
+        add_log (function): Function to add logs to PostgreSQL
         prefix (str): Prefix used to construct a unique log ID
     """
     print(f"[LOGGING] Logging batch of data with prefix: {prefix}")
@@ -44,11 +48,14 @@ def log_batch_of_data(agent_histories, add_log, prefix="batch"):
                 continue
             prev_entry = data
 
-            log_id = f"{prefix}-{agent_id}-{i}"
             position = convert_numpy_coords(data['position'])
             comm_quality = convert_numpy_coords(data['communication_quality'])
             jammed = data['jammed']
             timestamp = datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ')
+
+            # Determine message type based on status
+            # Errors are for jammed/problems, telemetry is for normal updates
+            message_type = "error" if jammed else "telemetry"
 
             log_text = (
                 f"Agent {agent_id} is at position {position}. "
@@ -58,17 +65,17 @@ def log_batch_of_data(agent_histories, add_log, prefix="batch"):
 
             metadata = {
                 'timestamp': timestamp,
-                'agent_id': agent_id,
+                'source': agent_id,  # agent_1, agent_2, etc.
+                'message_type': message_type,  # 'error' or 'telemetry'
                 'comm_quality': comm_quality,
                 'position': position,
                 'jammed': jammed,
-                'role': 'system',
-                'source': 'simulation'
+                'role': 'agent'
             }
 
-            # Correct order of parameters: log_text, metadata, agent_id=None, log_id=None
-            add_log(log_text=log_text, metadata=metadata, log_id=log_id)
-
+            # Add log to PostgreSQL (summary/notification)
+            add_log(log_text=log_text, metadata=metadata)
+            
 def round_coord(value):
     """Round coordinates to 3 decimal places"""
     return round(value, 3)

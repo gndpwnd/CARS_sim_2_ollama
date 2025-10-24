@@ -236,16 +236,33 @@ class SimulationRequirementsMonitor:
             return 0.0
     
     def log_requirements_status(self, agent_id: str):
-        """Log requirements status to RAG store"""
+        """Log requirements status - violations to PostgreSQL, metrics to Qdrant"""
         try:
-            from rag_store import add_log
+            from postgresql_store import add_log
+            from qdrant_store import add_telemetry
             
             violations = self.get_violations(agent_id)
+            metrics = self.tracker.get_vehicle_metrics(agent_id)
             
+            timestamp = datetime.now().isoformat()
+            
+            # Always log raw metrics to Qdrant
+            if metrics:
+                add_telemetry(
+                    agent_id=agent_id,
+                    position=(0, 0),  # Position updated elsewhere
+                    metadata={
+                        'fix_quality': metrics.fix_quality_level,
+                        'satellites': metrics.active_satellites,
+                        'signal_quality': metrics.signal_quality,
+                        'jamming_level': metrics.jamming_level,
+                        'timestamp': timestamp,
+                        'source': 'requirements_monitor'
+                    }
+                )
+            
+            # Only log violations to PostgreSQL (notifications/errors)
             if violations:
-                timestamp = datetime.now().isoformat()
-                
-                # Create summary text
                 critical_count = sum(1 for v in violations if v['status'] == 'CRITICAL')
                 warning_count = sum(1 for v in violations if v['status'] == 'WARNING')
                 
@@ -257,19 +274,20 @@ class SimulationRequirementsMonitor:
                 metadata = {
                     'timestamp': timestamp,
                     'agent_id': agent_id,
-                    'violations': violations,
+                    'source': agent_id,  # This is FROM the agent
+                    'message_type': 'error',  # Requirements violations are errors
                     'critical_count': critical_count,
                     'warning_count': warning_count,
-                    'role': 'system',
-                    'source': 'requirements_monitor',
-                    'message_type': 'requirements_status'
+                    'role': 'agent'
                 }
                 
                 add_log(log_text, metadata)
                 
         except Exception as e:
             print(f"[REQ MONITOR] Error logging requirements status: {e}")
-    
+            import traceback
+            traceback.print_exc()
+
     def start_monitoring(self):
         """Start continuous requirements monitoring"""
         if self.monitoring:

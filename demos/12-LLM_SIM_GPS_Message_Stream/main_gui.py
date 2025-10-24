@@ -3,6 +3,7 @@
 Main GPS Simulation GUI (PyQt5 with embedded matplotlib)
 Runs the agent simulation with visualization - NO API SERVER
 """
+import datetime
 import matplotlib
 matplotlib.use('Qt5Agg')
 
@@ -50,14 +51,26 @@ except ImportError as e:
     REQUIREMENTS_ENABLED = False
 
 try:
-    from rag_store import add_log
+    from postgresql_store  import add_log
     RAG_ENABLED = True
-    print("[RAG] RAG logging enabled")
+    print("[RAG] Postgresql logging enabled")
 except ImportError as e:
-    print(f"[RAG] Warning: RAG logging disabled - {e}")
+    print(f"[RAG] Warning: Postgresql logging disabled - {e}")
     RAG_ENABLED = False
     def add_log(text, metadata, log_id=None):
         pass
+try:
+    from qdrant_store import add_nmea_message, add_telemetry
+    RAG_ENABLED = True
+    print("[RAG] Qdrant logging enabled")
+except ImportError as e:
+    print(f"[RAG] Warning: Qdrant logging disabled - {e}")
+    RAG_ENABLED = False
+    def add_nmea_message(agent_id, nmea_sentence, timestamp):
+        pass
+    def add_telemetry(agent_id, telemetry_data, timestamp):
+        pass
+
 
 try:
     from notification_dashboard import GPSRequirementsNotificationGUI
@@ -319,10 +332,20 @@ class GPSSimulationGUI(QMainWindow):
         print(f"[INIT] Initializing {num_agents} agents...")
         
         for agent_id in agents:
-            start_pos = (
-                random.uniform(x_range[0], x_range[1]),
-                random.uniform(y_range[0], y_range[1])
-            )
+            # Keep trying until we get a non-jammed starting position
+            max_attempts = 50
+            for attempt in range(max_attempts):
+                start_pos = (
+                    random.uniform(x_range[0], x_range[1]),
+                    random.uniform(y_range[0], y_range[1])
+                )
+                
+                # Check if this position is jammed
+                if not self.check_if_jammed(start_pos):
+                    break  # Found a clear position
+            
+            if self.check_if_jammed(start_pos):
+                print(f"[INIT] WARNING: {agent_id} spawned in jammed area after {max_attempts} attempts")
             
             self.swarm_pos_dict[agent_id] = [list(start_pos) + [high_comm_qual]]
             self.jammed_positions[agent_id] = False
@@ -368,6 +391,35 @@ class GPSSimulationGUI(QMainWindow):
             
             if gps_data:
                 self.gps_data_cache[agent_id] = gps_data
+                
+                # NEW: Log to Qdrant - NMEA messages
+                for nmea_sentence in gps_data.nmea_sentences:
+                    add_nmea_message(
+                        agent_id=agent_id,
+                        nmea_sentence=nmea_sentence,
+                        metadata={
+                            'position': position,
+                            'jammed': is_agent_jammed,
+                            'fix_quality': gps_data.fix_quality,
+                            'satellites': gps_data.satellite_count,
+                            'signal_quality': gps_data.signal_quality
+                        }
+                    )
+                
+                # NEW: Log to Qdrant - Telemetry
+                add_telemetry(
+                    agent_id=agent_id,
+                    position=position,
+                    metadata={
+                        'jammed': is_agent_jammed,
+                        'communication_quality': low_comm_qual if is_agent_jammed else high_comm_qual,
+                        'gps_satellites': gps_data.satellite_count,
+                        'gps_signal_quality': gps_data.signal_quality,
+                        'gps_fix_quality': gps_data.fix_quality
+                    }
+                )
+                
+                # OLD: Log to PostgreSQL (keep for GPS metrics summary)
                 self.log_gps_metrics(agent_id, gps_data)
                 
                 if REQUIREMENTS_ENABLED and self.requirements_monitor:
@@ -388,9 +440,9 @@ class GPSSimulationGUI(QMainWindow):
         except Exception as e:
             print(f"[GPS] Error updating GPS for {agent_id}: {e}")
             return None
-    
+
     def log_gps_metrics(self, agent_id, gps_data):
-        """Log GPS metrics to RAG store"""
+        """Log GPS metrics to PostgreSQL as notifications"""
         if not RAG_ENABLED:
             return
             
@@ -418,22 +470,20 @@ class GPSSimulationGUI(QMainWindow):
             metadata = {
                 'timestamp': timestamp,
                 'agent_id': agent_id,
+                'source': agent_id,  # agent_1, agent_2, etc.
+                'message_type': 'notification',  # GPS metrics are notifications
                 'gps_fix_quality': gps_data.fix_quality,
                 'gps_satellites': gps_data.satellite_count,
                 'gps_signal_quality': gps_data.signal_quality,
                 'gps_hdop': gga_parsed.get('hdop', 99.9) if gga_parsed.get('valid') else 99.9,
-                'nmea_sentence_count': len(gps_data.nmea_sentences),
-                'rtcm_message_count': len(gps_data.rtcm_messages),
-                'role': 'system',
-                'source': 'gps',
-                'message_type': 'gps_metrics'
+                'role': 'agent'
             }
             
             add_log(log_text, metadata)
             
         except Exception as e:
             print(f"[GPS] Error logging GPS metrics: {e}")
-    
+
     def update_swarm_data(self):
         """Update simulation state"""
         if not self.animation_running:
@@ -447,10 +497,38 @@ class GPSSimulationGUI(QMainWindow):
             
             is_agent_jammed = self.check_if_jammed(last_position)
             
+            # ALWAYS log telemetry to Qdrant (every iteration for every agent)
+            if RAG_ENABLED:
+                add_telemetry(
+                    agent_id=agent_id,
+                    position=last_position,
+                    metadata={
+                        'jammed': is_agent_jammed,
+                        'communication_quality': low_comm_qual if is_agent_jammed else high_comm_qual,
+                        'iteration': self.iteration_count,
+                        'timestamp': time.time()
+                    }
+                )
+            
+            # Handle jamming state changes
             if is_agent_jammed and not self.jammed_positions[agent_id]:
                 print(f"{agent_id} entered jamming zone at {last_position}")
                 self.jammed_positions[agent_id] = True
                 self.swarm_pos_dict[agent_id][-1][2] = low_comm_qual
+                
+                # Log jamming event as ERROR to PostgreSQL
+                if RAG_ENABLED:
+                    add_log(
+                        f"Agent {agent_id} entered jamming zone at position ({last_position[0]:.2f}, {last_position[1]:.2f})",
+                        {
+                            'timestamp': datetime.datetime.now().isoformat(),
+                            'source': agent_id,
+                            'message_type': 'error',
+                            'position': last_position,
+                            'jammed': True,
+                            'role': 'agent'
+                        }
+                    )
                 
                 if GPS_ENABLED:
                     self.update_agent_gps_data(agent_id, last_position)
@@ -460,20 +538,67 @@ class GPSSimulationGUI(QMainWindow):
                 self.jammed_positions[agent_id] = False
                 self.swarm_pos_dict[agent_id][-1][2] = high_comm_qual
                 
+                # Log recovery event as NOTIFICATION to PostgreSQL
+                if RAG_ENABLED:
+                    add_log(
+                        f"Agent {agent_id} left jamming zone at position ({last_position[0]:.2f}, {last_position[1]:.2f})",
+                        {
+                            'timestamp': datetime.datetime.now().isoformat(),
+                            'source': agent_id,
+                            'message_type': 'notification',
+                            'position': last_position,
+                            'jammed': False,
+                            'role': 'agent'
+                        }
+                    )
+                
                 if GPS_ENABLED:
                     self.update_agent_gps_data(agent_id, last_position)
             
+            # Movement logic
             if not self.agent_paths[agent_id] or len(self.agent_paths[agent_id]) == 0:
                 if self.jammed_positions[agent_id]:
                     # Jamming recovery behavior
                     if USE_LLM:
+                        # LLM requests new position through MCP
+                        print(f"[LLM] {agent_id} requesting recovery position from LLM via MCP")
+                        
+                        # Log LLM request to PostgreSQL
+                        if RAG_ENABLED:
+                            add_log(
+                                f"Agent {agent_id} requesting recovery position from LLM",
+                                {
+                                    'timestamp': datetime.datetime.now().isoformat(),
+                                    'source': agent_id,
+                                    'message_type': 'command',
+                                    'position': last_position,
+                                    'jammed': True,
+                                    'role': 'agent'
+                                }
+                            )
+                        
                         next_pos = llm_make_move(
                             agent_id, self.swarm_pos_dict, num_history_segments,
                             ollama, LLM_MODEL, MAX_CHARS_PER_AGENT, MAX_RETRIES,
                             jamming_center, jamming_radius, max_movement_per_step,
                             x_range, y_range
                         )
+                        
+                        # Log LLM response to PostgreSQL
+                        if RAG_ENABLED:
+                            add_log(
+                                f"LLM provided recovery position ({next_pos[0]:.2f}, {next_pos[1]:.2f}) for {agent_id}",
+                                {
+                                    'timestamp': datetime.datetime.now().isoformat(),
+                                    'source': 'llm',
+                                    'message_type': 'response',
+                                    'target_agent': agent_id,
+                                    'position': next_pos,
+                                    'role': 'system'
+                                }
+                            )
                     else:
+                        # Algorithm-based recovery
                         next_pos = algorithm_make_move(
                             agent_id, last_position, self.get_nearest_jamming_center(last_position), 
                             self.get_nearest_jamming_radius(last_position),
@@ -500,6 +625,7 @@ class GPSSimulationGUI(QMainWindow):
                         )
                         print(f"[MOVEMENT] {agent_id} moving toward mission endpoint {target}")
 
+            # Execute movement
             if self.agent_paths[agent_id] and len(self.agent_paths[agent_id]) > 0:
                 next_pos = self.agent_paths[agent_id].pop(0)
                 limited_pos = limit_movement(last_position, next_pos, max_movement_per_step)
@@ -513,24 +639,14 @@ class GPSSimulationGUI(QMainWindow):
                 if not self.jammed_positions[agent_id]:
                     self.last_safe_position[agent_id] = limited_pos
             
-            if GPS_ENABLED and self.iteration_count % 5 == 0:
+            # Update GPS data every iteration (for NMEA logging to Qdrant)
+            if GPS_ENABLED:
                 self.update_agent_gps_data(agent_id, self.swarm_pos_dict[agent_id][-1][:2])
         
-        if RAG_ENABLED and self.iteration_count % 10 == 0:
-            agent_histories = {}
-            for agent_id in self.swarm_pos_dict:
-                last_data = self.swarm_pos_dict[agent_id][-1]
-                agent_histories[agent_id] = [{
-                    'position': tuple(last_data[:2]),
-                    'communication_quality': last_data[2],
-                    'jammed': self.jammed_positions[agent_id]
-                }]
-            
-            log_batch_of_data(agent_histories, add_log, f"iter{self.iteration_count}")
-        
+        # Update plot and status
         self.update_plot()
         self.status_label.setText(f"Iteration: {self.iteration_count}")
-    
+
     def check_if_jammed(self, position):
         """Check if a position is in any jamming zone"""
         for cx, cy, radius in self.jamming_zones:

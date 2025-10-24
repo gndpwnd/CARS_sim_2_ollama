@@ -1,5 +1,5 @@
 /**
- * chat.js - Chat Interface Management
+ * chat.js - Chat Interface Management (FIXED)
  * Handles chat messages and LLM interactions
  */
 
@@ -17,7 +17,9 @@ const ChatManager = {
                              status === 'error' ? '✗' : 'ℹ';
             div.innerHTML = `<span class="status-indicator-msg">${statusIcon}</span>${DashboardUtils.escapeHtml(String(message))}`;
         } else {
-            div.textContent = message;
+            // Support markdown-like formatting
+            const formatted = this.formatMessage(message);
+            div.innerHTML = formatted;
         }
 
         DashboardState.chat.container.appendChild(div);
@@ -27,7 +29,31 @@ const ChatManager = {
     },
 
     /**
-     * Handle chat form submission
+     * Format message with markdown-like syntax
+     */
+    formatMessage: function(text) {
+        let formatted = DashboardUtils.escapeHtml(String(text));
+        
+        // Bold: **text**
+        formatted = formatted.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        
+        // Inline code: `text`
+        formatted = formatted.replace(/`(.+?)`/g, '<code>$1</code>');
+        
+        // Bullet points: - text
+        formatted = formatted.replace(/^- (.+)$/gm, '<li>$1</li>');
+        
+        // Wrap lists
+        formatted = formatted.replace(/(<li>.*<\/li>)+/g, '<ul>$&</ul>');
+        
+        // Line breaks
+        formatted = formatted.replace(/\n/g, '<br>');
+        
+        return formatted;
+    },
+
+    /**
+     * Handle chat form submission (FIXED)
      */
     handleChatSubmit: async function(event) {
         event.preventDefault();
@@ -45,11 +71,16 @@ const ChatManager = {
         const loadingMsg = this.addChatMessage('Processing...', 'bot');
 
         try {
-            const response = await fetch('/llm_command', {
+            // FIXED: Use /chat endpoint instead of /llm_command
+            const response = await fetch('/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message: userInput })
             });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
 
             const data = await response.json();
             DashboardUtils.log('CHAT', 'Received response:', data);
@@ -60,20 +91,15 @@ const ChatManager = {
             }
 
             // Determine message status
-            let status = 'success';
+            let status = '';
             const responseText = data.response || 'No response received';
             
-            if (responseText.includes('Error') || responseText.includes('Failed')) {
+            if (data.error || responseText.toLowerCase().includes('error')) {
                 status = 'error';
             }
 
             // Display response
-            const responseMsg = this.addChatMessage(responseText, 'bot', status);
-
-            // Add live data if available
-            if (data.live_data) {
-                this.addLiveDataDisplay(responseMsg, data.live_data);
-            }
+            this.addChatMessage(responseText, 'bot', status);
 
         } catch (error) {
             DashboardUtils.error('CHAT', 'Error sending message', error);
@@ -84,31 +110,6 @@ const ChatManager = {
             
             this.addChatMessage(`Error: ${error.message}`, 'bot', 'error');
         }
-    },
-
-    /**
-     * Add live data display to a message
-     */
-    addLiveDataDisplay: function(messageElement, liveData) {
-        const liveDataDiv = document.createElement('div');
-        liveDataDiv.className = 'live-data-container';
-        
-        Object.entries(liveData).forEach(([agentId, agentData]) => {
-            if (agentData) {
-                const agentDiv = document.createElement('div');
-                agentDiv.className = 'live-agent-data';
-                
-                const x = agentData.x !== undefined ? agentData.x.toFixed(2) : '?';
-                const y = agentData.y !== undefined ? agentData.y.toFixed(2) : '?';
-                const comm = agentData.communication_quality !== undefined ? 
-                    (agentData.communication_quality * 100).toFixed(0) : '?';
-                
-                agentDiv.textContent = `${agentId}: (${x}, ${y}) - Comm: ${comm}%`;
-                liveDataDiv.appendChild(agentDiv);
-            }
-        });
-        
-        messageElement.appendChild(liveDataDiv);
     },
 
     /**
@@ -126,47 +127,36 @@ const ChatManager = {
     },
 
     /**
-     * Display formatted message
-     */
-    displayMessage: function(role, content) {
-        const chatContainer = document.getElementById('chat-container');
-        const messageDiv = document.createElement('div');
-        messageDiv.className = `chat-message ${role}-message`;
-        
-        // Simple markdown-like formatting
-        let formattedContent = content
-            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')  // Bold
-            .replace(/`(.+?)`/g, '<code>$1</code>')  // Inline code
-            .replace(/^- (.+)$/gm, '<li>$1</li>')  // List items
-            .replace(/\n/g, '<br>');  // Line breaks
-        
-        // Wrap list items
-        formattedContent = formattedContent.replace(/(<li>.*<\/li>)+/g, '<ul>$&</ul>');
-        
-        messageDiv.innerHTML = `
-            <div class="message-header">${role === 'user' ? '👤 You' : '🤖 Assistant'}</div>
-            <div class="message-content">${formattedContent}</div>
-        `;
-        
-        chatContainer.appendChild(messageDiv);
-        chatContainer.scrollTop = chatContainer.scrollHeight;
-    },
-
-    /**
-     * Load startup menu
+     * Load startup menu (FIXED)
      */
     loadStartupMenu: async function() {
         try {
+            DashboardUtils.log('CHAT', 'Loading startup menu...');
+            
             const response = await fetch('/startup_menu');
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
             const data = await response.json();
             
             if (data.menu) {
-                this.displayMessage('bot', data.menu);
+                // Remove welcome message if present
+                const welcomeMsg = DashboardState.chat.container.querySelector('.welcome-message');
+                if (welcomeMsg) {
+                    DashboardState.chat.container.removeChild(welcomeMsg);
+                }
+                
+                this.addChatMessage(data.menu, 'bot');
+                DashboardUtils.log('CHAT', 'Startup menu loaded successfully');
+            } else {
+                throw new Error('No menu in response');
             }
             
         } catch (error) {
-            console.error('Failed to load startup menu:', error);
-            this.displayMessage('system', '⚠️ Welcome! Type "help" for available commands.');
+            DashboardUtils.error('CHAT', 'Failed to load startup menu', error);
+            this.addChatMessage('⚠️ Welcome! Type "help" for available commands.', 'bot');
         }
     },
 
@@ -187,10 +177,10 @@ const ChatManager = {
             clearChatBtn.addEventListener('click', () => this.clearChat());
         }
 
-        // Load startup menu when DOM is ready
-        document.addEventListener('DOMContentLoaded', () => {
+        // Load startup menu after short delay
+        setTimeout(() => {
             this.loadStartupMenu();
-        });
+        }, 500);
     }
 };
 
