@@ -65,8 +65,6 @@ const ChatManager = {
             
             if (responseText.includes('Error') || responseText.includes('Failed')) {
                 status = 'error';
-            } else if (responseText === 'Not a movement command') {
-                status = '';
             }
 
             // Display response
@@ -104,14 +102,8 @@ const ChatManager = {
                 const y = agentData.y !== undefined ? agentData.y.toFixed(2) : '?';
                 const comm = agentData.communication_quality !== undefined ? 
                     (agentData.communication_quality * 100).toFixed(0) : '?';
-                const status = agentData.jammed ? '🚫 Jammed' : '✅ Clear';
                 
-                agentDiv.innerHTML = `
-                    <strong>${DashboardUtils.escapeHtml(agentId)}</strong>:
-                    Position (${x}, ${y})
-                    | Comm: ${comm}%
-                    | ${status}
-                `;
+                agentDiv.textContent = `${agentId}: (${x}, ${y}) - Comm: ${comm}%`;
                 liveDataDiv.appendChild(agentDiv);
             }
         });
@@ -134,6 +126,51 @@ const ChatManager = {
     },
 
     /**
+     * Display formatted message
+     */
+    displayMessage: function(role, content) {
+        const chatContainer = document.getElementById('chat-container');
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `chat-message ${role}-message`;
+        
+        // Simple markdown-like formatting
+        let formattedContent = content
+            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')  // Bold
+            .replace(/`(.+?)`/g, '<code>$1</code>')  // Inline code
+            .replace(/^- (.+)$/gm, '<li>$1</li>')  // List items
+            .replace(/\n/g, '<br>');  // Line breaks
+        
+        // Wrap list items
+        formattedContent = formattedContent.replace(/(<li>.*<\/li>)+/g, '<ul>$&</ul>');
+        
+        messageDiv.innerHTML = `
+            <div class="message-header">${role === 'user' ? '👤 You' : '🤖 Assistant'}</div>
+            <div class="message-content">${formattedContent}</div>
+        `;
+        
+        chatContainer.appendChild(messageDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    },
+
+    /**
+     * Load startup menu
+     */
+    loadStartupMenu: async function() {
+        try {
+            const response = await fetch('/startup_menu');
+            const data = await response.json();
+            
+            if (data.menu) {
+                this.displayMessage('bot', data.menu);
+            }
+            
+        } catch (error) {
+            console.error('Failed to load startup menu:', error);
+            this.displayMessage('system', '⚠️ Welcome! Type "help" for available commands.');
+        }
+    },
+
+    /**
      * Setup event listeners
      */
     setupEventListeners: function() {
@@ -147,12 +184,15 @@ const ChatManager = {
         // Clear chat button
         const clearChatBtn = document.getElementById('clear-chat');
         if (clearChatBtn) {
-            clearChatBtn.addEventListener('click', () => {
-                this.clearChat();
-            });
+            clearChatBtn.addEventListener('click', () => this.clearChat());
         }
+
+        // Load startup menu when DOM is ready
+        document.addEventListener('DOMContentLoaded', () => {
+            this.loadStartupMenu();
+        });
     }
 };
 
-// Make chat manager available globally
+// Export ChatManager for use in other modules
 window.ChatManager = ChatManager;

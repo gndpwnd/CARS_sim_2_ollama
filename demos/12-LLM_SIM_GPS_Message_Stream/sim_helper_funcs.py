@@ -141,50 +141,47 @@ def limit_movement(current_pos, target_pos, max_movement_per_step):
 
 def algorithm_make_move(agent_id, current_pos, jamming_center, jamming_radius, 
                        max_movement_per_step, x_range, y_range):
-    """Use the fittest path algorithm for jammed agents"""
-    print(f"[Algorithm] Finding path for Agent {agent_id} at {current_pos}")
+    """
+    Recovery algorithm for jammed agents:
+    1. Try random moves within max_movement_per_step
+    2. Prefer moves that exit jamming zone
+    3. Fall back to moving away from jamming center
+    """
+    print(f"[Algorithm] Recovery for {agent_id} at {current_pos}")
     
-    # Try to find a valid move that's outside the jamming zone
-    max_attempts = 10
-    for _ in range(max_attempts):
-        # Generate a random direction (unit vector)
+    # Try random directions (prefer ones exiting jamming)
+    for attempt in range(10):
         angle = random.uniform(0, 2 * np.pi)
         direction = np.array([np.cos(angle), np.sin(angle)])
-        
-        # Move max_movement_per_step in that direction
         suggestion = np.array(current_pos) + direction * max_movement_per_step
         
-        # Clamp to the boundaries of the plane
+        # Clamp to boundaries
         suggestion[0] = max(min(suggestion[0], x_range[1]), x_range[0])
         suggestion[1] = max(min(suggestion[1], y_range[1]), y_range[0])
         
-        # Check if this would be outside the jamming zone
+        # Check if outside jamming
         if not is_jammed(suggestion, jamming_center, jamming_radius):
-            print(f"[Algorithm] Found non-jammed position for Agent {agent_id}: {suggestion}")
+            print(f"[Algorithm] Found clear position: {suggestion}")
             return (round_coord(suggestion[0]), round_coord(suggestion[1]))
     
-    # If we failed to find a good move after max_attempts, try to move away from center
-    print(f"[Algorithm] Couldn't find non-jammed position, moving away from jamming center")
-    
-    # Direction away from jamming center
+    # Fallback: move directly away from jamming center
+    print(f"[Algorithm] Moving away from jamming center")
     direction = np.array(current_pos) - np.array(jamming_center)
     direction_norm = np.linalg.norm(direction)
     
     if direction_norm > 0:
         unit_direction = direction / direction_norm
-        suggestion = np.array(current_pos) + unit_direction * max_movement_per_step
     else:
-        # If at center, move in random direction
+        # At center - pick random direction
         angle = random.uniform(0, 2 * np.pi)
         unit_direction = np.array([np.cos(angle), np.sin(angle)])
-        suggestion = np.array(current_pos) + unit_direction * max_movement_per_step
     
-    # Clamp to the boundaries
+    suggestion = np.array(current_pos) + unit_direction * max_movement_per_step
     suggestion[0] = max(min(suggestion[0], x_range[1]), x_range[0])
     suggestion[1] = max(min(suggestion[1], y_range[1]), y_range[0])
     
     return (round_coord(suggestion[0]), round_coord(suggestion[1]))
-
+    
 def llm_make_move(agent_id, swarm_pos_dict, num_history_segments, ollama, LLM_MODEL, MAX_CHARS_PER_AGENT, 
                  MAX_RETRIES, jamming_center, jamming_radius, max_movement_per_step, x_range, y_range):
     """Use LLM to determine movement for jammed agents"""

@@ -18,12 +18,16 @@ from gps_client_lib import GPSFix, SatelliteInfo
 
 @dataclass
 class VehicleMetrics:
-    """GPS metrics for a single vehicle."""
+    """Simplified GPS metrics"""
     vehicle_id: str
     
-    # Current values for the 12 key requirements
+    # Core 4 metrics only
     fix_quality_level: int = 0
     active_satellites: int = 0
+    signal_quality: float = 45.0
+    jamming_level: float = 0.0
+    
+    # Additional tracking attributes
     satellite_drop_rate: float = 0.0
     cn0_degradation: float = 45.0
     agc_jamming_level: float = 45.0
@@ -31,21 +35,19 @@ class VehicleMetrics:
     truncated_message_rate: float = 0.0
     position_jump: float = 0.0
     velocity_check: float = 0.0
-    cycle_slips: int = 0
-    gps_ins_position_diff: float = 0.5
-    gps_time_anomalies: int = 0
+    cycle_slips: float = 0.0
+    gps_ins_position_diff: float = 0.0
+    gps_time_anomalies: float = 0.0
     
-    # Tracking variables
+    # History tracking
     satellite_history: List[int] = field(default_factory=list)
     last_position: Optional[tuple] = None
     last_position_time: float = 0.0
     message_count: int = 0
     error_count: int = 0
     
-    def __post_init__(self):
-        if not self.satellite_history:
-            self.satellite_history = []
-        self.last_position_time = time.time()
+    # Minimal tracking
+    last_update_time: float = 0.0
 
 
 class VehicleRequirementsTracker:
@@ -158,6 +160,7 @@ class VehicleRequirementsTracker:
             if satellites:
                 avg_snr = sum(sat.snr for sat in satellites) / len(satellites)
                 metrics.cn0_degradation = max(10.0, avg_snr)
+                metrics.signal_quality = avg_snr
     
     def update_environmental_conditions(self, vehicle_id: str, 
                                       jamming_level: float = 0.0, 
@@ -168,6 +171,7 @@ class VehicleRequirementsTracker:
                 self.add_vehicle(vehicle_id)
             
             metrics = self.vehicle_metrics[vehicle_id]
+            metrics.jamming_level = jamming_level
             
             # Update AGC based on jamming
             base_agc = 45.0
@@ -214,18 +218,10 @@ class VehicleRequirementsTracker:
     def _get_metric_value(self, req_name: str, metrics: VehicleMetrics) -> float:
         """Map requirement name to metric value."""
         mapping = {
-            'Fix Quality Degradation Detection': metrics.fix_quality_level,
-            'Satellite Count Critical Threshold': metrics.active_satellites,
-            'Satellite Count Drop Rate Detection': metrics.satellite_drop_rate,
-            'Carrier-to-Noise Ratio Degradation Detection': metrics.cn0_degradation,
-            'Automatic Gain Control Monitoring': metrics.agc_jamming_level,
-            'Checksum Failure Rate Monitoring': metrics.checksum_failure_rate,
-            'Truncated Sentence Rate Monitoring': metrics.truncated_message_rate,
-            'Position Jump Magnitude Detection': metrics.position_jump,
-            'Rover Velocity Limit Monitoring': metrics.velocity_check,
-            'Carrier Phase Cycle Slip Detection': metrics.cycle_slips,
-            'GPS-INS Position Consistency Check': metrics.gps_ins_position_diff,
-            'Time-of-Week Anomaly Detection': metrics.gps_time_anomalies
+            'Fix Quality Level': metrics.fix_quality_level,
+            'Satellite Count': metrics.active_satellites,
+            'Signal Strength': metrics.signal_quality,
+            'Jamming Indicator': metrics.jamming_level
         }
         
         return mapping.get(req_name, 0.0)

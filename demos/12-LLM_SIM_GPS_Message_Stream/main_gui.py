@@ -4,7 +4,7 @@ Main GPS Simulation GUI (PyQt5 with embedded matplotlib)
 Runs the agent simulation with visualization - NO API SERVER
 """
 import matplotlib
-matplotlib.use('Qt5Agg')  # Use Qt5Agg backend for PyQt5 integration
+matplotlib.use('Qt5Agg')
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -24,7 +24,6 @@ from PyQt5.QtCore import QTimer, Qt
 
 print("[IMPORT] Starting imports...")
 
-# Import helper functions
 from sim_helper_funcs import (
     is_jammed, linear_path, limit_movement, 
     algorithm_make_move, llm_make_move,
@@ -32,10 +31,8 @@ from sim_helper_funcs import (
     convert_numpy_coords
 )
 
-# Import LLM config
 from llm_config import get_ollama_client, get_model_name
 
-# Import GPS integration
 try:
     from gps_client_lib import GPSData, AgentGPSManager, parse_nmea_gga
     GPS_ENABLED = True
@@ -44,7 +41,6 @@ except ImportError as e:
     print(f"[GPS] Warning: GPS integration disabled - {e}")
     GPS_ENABLED = False
 
-# Import requirements tracking
 try:
     from sim_reqs_tracker import create_requirements_monitor, get_requirements_summary
     REQUIREMENTS_ENABLED = True
@@ -53,7 +49,6 @@ except ImportError as e:
     print(f"[REQUIREMENTS] Warning: Requirements tracking disabled - {e}")
     REQUIREMENTS_ENABLED = False
 
-# Import RAG store
 try:
     from rag_store import add_log
     RAG_ENABLED = True
@@ -64,7 +59,6 @@ except ImportError as e:
     def add_log(text, metadata, log_id=None):
         pass
 
-# Import PyQt5 notification dashboard
 try:
     from notification_dashboard import GPSRequirementsNotificationGUI
     PYQT5_ENABLED = True
@@ -87,7 +81,7 @@ if USE_LLM:
     MAX_RETRIES = 3
 
 # Simulation parameters
-update_freq = 2.5  # seconds
+update_freq = 2.5
 max_movement_per_step = 1.41
 num_history_segments = 5
 
@@ -129,23 +123,21 @@ class GPSSimulationGUI(QMainWindow):
         self.animation_running = True
         self.iteration_count = 0
         
-        # PyQt5 dashboard state
         self.notification_gui = None
         
-        # Jamming zones list (list of tuples: (center_x, center_y, radius))
+        # Jamming zones
         self.jamming_zones = [(jamming_center[0], jamming_center[1], jamming_radius)]
         
         print("[GUI] Setting up UI...")
-        # Setup UI
         self.setup_ui()
         print("[GUI] UI setup complete")
         
-        # Initialize GPS and Requirements
+        # Initialize GPS and Requirements (non-blocking)
         print("[GUI] Initializing subsystems...")
         self.initialize_gps_manager()
         self.initialize_requirements_monitor()
         
-        # Initialize agents
+        # Initialize agents (NO GPS CALLS)
         print("[GUI] Initializing agents...")
         self.initialize_agents()
         
@@ -153,7 +145,7 @@ class GPSSimulationGUI(QMainWindow):
         print("[GUI] Creating simulation timer...")
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_swarm_data)
-        self.timer.start(int(update_freq * 1000))  # Convert to milliseconds
+        self.timer.start(int(update_freq * 1000))
         
         # Initial plot
         print("[GUI] Creating initial plot...")
@@ -166,17 +158,13 @@ class GPSSimulationGUI(QMainWindow):
         self.setWindowTitle("Multi-Agent GPS Simulation")
         self.setGeometry(100, 100, 1400, 900)
         
-        # Force window to stay on top initially
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         
-        # Central widget
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         
-        # Main layout
         main_layout = QVBoxLayout(central_widget)
         
-        # Header
         header = QLabel("Multi-Agent GPS Simulation - Algorithm Control")
         header.setStyleSheet("""
             QLabel {
@@ -190,16 +178,13 @@ class GPSSimulationGUI(QMainWindow):
         """)
         main_layout.addWidget(header)
         
-        # Create matplotlib figure
         print("[GUI] Creating matplotlib figure...")
         self.fig, self.ax = plt.subplots(figsize=(12, 8))
         self.canvas = FigureCanvas(self.fig)
         main_layout.addWidget(self.canvas)
         
-        # Control buttons
         button_layout = QHBoxLayout()
         
-        # Mode selection button
         self.mode_button = QPushButton("Mode: Navigate")
         self.mode_button.setStyleSheet("""
             QPushButton {
@@ -217,8 +202,7 @@ class GPSSimulationGUI(QMainWindow):
         self.mode_button.clicked.connect(self.toggle_mode)
         button_layout.addWidget(self.mode_button)
         
-        # Drawing mode state
-        self.drawing_mode = "navigate"  # "navigate", "add_jamming", "remove_jamming"
+        self.drawing_mode = "navigate"
         self.drawing_area = False
         self.area_start = None
         self.temp_circle = None
@@ -257,7 +241,6 @@ class GPSSimulationGUI(QMainWindow):
         self.pause_button.clicked.connect(self.toggle_pause)
         button_layout.addWidget(self.pause_button)
         
-        # Clear jamming areas button
         self.clear_button = QPushButton("Clear All Jamming")
         self.clear_button.setStyleSheet("""
             QPushButton {
@@ -277,7 +260,6 @@ class GPSSimulationGUI(QMainWindow):
         
         button_layout.addStretch()
         
-        # Status label
         self.status_label = QLabel("Iteration: 0")
         self.status_label.setStyleSheet("""
             QLabel {
@@ -291,7 +273,6 @@ class GPSSimulationGUI(QMainWindow):
         
         main_layout.addLayout(button_layout)
         
-        # Connect matplotlib mouse events
         self.canvas.mpl_connect('button_press_event', self.on_mouse_press)
         self.canvas.mpl_connect('motion_notify_event', self.on_mouse_move)
         self.canvas.mpl_connect('button_release_event', self.on_mouse_release)
@@ -334,7 +315,7 @@ class GPSSimulationGUI(QMainWindow):
                 traceback.print_exc()
     
     def initialize_agents(self):
-        """Initialize all agents"""
+        """Initialize all agents - NO GPS CALLS HERE"""
         print(f"[INIT] Initializing {num_agents} agents...")
         
         for agent_id in agents:
@@ -351,20 +332,18 @@ class GPSSimulationGUI(QMainWindow):
             
             print(f"[INIT] {agent_id} starting at {start_pos}")
             
-            # DON'T call GPS during initialization - it blocks!
-            # GPS data will be collected in first simulation update
-            
+            # Register with requirements monitor (no GPS needed)
             if REQUIREMENTS_ENABLED and self.requirements_monitor:
                 self.requirements_monitor.add_agent(agent_id)
         
         print(f"[INIT] All {num_agents} agents initialized")
         
-        # Schedule first GPS update after GUI is shown (non-blocking)
+        # IMPORTANT: Schedule GPS initialization AFTER GUI shows
         if GPS_ENABLED and self.gps_manager:
             QTimer.singleShot(500, self.initialize_gps_for_agents)
-    
+
     def initialize_gps_for_agents(self):
-        """Initialize GPS data for all agents (called after GUI is shown)"""
+        """Initialize GPS data AFTER GUI is visible"""
         print("[GPS] Initializing GPS data for agents...")
         for agent_id in self.swarm_pos_dict:
             position = self.swarm_pos_dict[agent_id][-1][:2]
@@ -394,7 +373,6 @@ class GPSSimulationGUI(QMainWindow):
                 if REQUIREMENTS_ENABLED and self.requirements_monitor:
                     self.requirements_monitor.update_from_gps_data(agent_id, gps_data)
                     
-                    # Calculate jamming level from nearest zone
                     jamming_level = 0.0
                     for cx, cy, radius in self.jamming_zones:
                         dist = math.sqrt((position[0] - cx)**2 + (position[1] - cy)**2)
@@ -467,7 +445,6 @@ class GPSSimulationGUI(QMainWindow):
             last_position = self.swarm_pos_dict[agent_id][-1][:2]
             comm_quality = self.swarm_pos_dict[agent_id][-1][2]
             
-            # Check if agent is in ANY jamming zone
             is_agent_jammed = self.check_if_jammed(last_position)
             
             if is_agent_jammed and not self.jammed_positions[agent_id]:
@@ -562,7 +539,7 @@ class GPSSimulationGUI(QMainWindow):
     def get_nearest_jamming_center(self, position):
         """Get the center of the nearest jamming zone"""
         if not self.jamming_zones:
-            return jamming_center  # Fallback to default
+            return jamming_center
         
         min_dist = float('inf')
         nearest_center = jamming_center
@@ -578,7 +555,7 @@ class GPSSimulationGUI(QMainWindow):
     def get_nearest_jamming_radius(self, position):
         """Get the radius of the nearest jamming zone"""
         if not self.jamming_zones:
-            return jamming_radius  # Fallback to default
+            return jamming_radius
         
         min_dist = float('inf')
         nearest_radius = jamming_radius
@@ -601,7 +578,6 @@ class GPSSimulationGUI(QMainWindow):
             self.ax.set_aspect('equal')
             self.ax.grid(True, alpha=0.3)
             
-            # Draw all jamming zones
             for cx, cy, radius in self.jamming_zones:
                 jamming_circle = patches.Circle(
                     (cx, cy), radius, 
@@ -609,7 +585,6 @@ class GPSSimulationGUI(QMainWindow):
                 )
                 self.ax.add_patch(jamming_circle)
                 
-                # Add label to jamming zone
                 self.ax.text(cx, cy, f'R={radius:.1f}', 
                            fontsize=8, ha='center', va='center',
                            bbox=dict(boxstyle='round', facecolor='red', alpha=0.3))
@@ -682,7 +657,6 @@ class GPSSimulationGUI(QMainWindow):
         next_index = (current_index + 1) % len(modes)
         self.drawing_mode = modes[next_index]
         
-        # Update button appearance
         if self.drawing_mode == "navigate":
             self.mode_button.setText("Mode: Navigate")
             self.mode_button.setStyleSheet("""
@@ -715,7 +689,7 @@ class GPSSimulationGUI(QMainWindow):
                 }
             """)
             print("[MODE] Switched to Add Jamming mode - Click and drag to draw jamming zone")
-        else:  # remove_jamming
+        else:
             self.mode_button.setText("Mode: Remove Jamming")
             self.mode_button.setStyleSheet("""
                 QPushButton {
@@ -744,13 +718,11 @@ class GPSSimulationGUI(QMainWindow):
             return
         
         if self.drawing_mode == "add_jamming":
-            # Start drawing a new jamming zone
             self.drawing_area = True
             self.area_start = (event.xdata, event.ydata)
             print(f"[JAMMING] Started drawing jamming zone at ({event.xdata:.2f}, {event.ydata:.2f})")
         
         elif self.drawing_mode == "remove_jamming":
-            # Remove jamming zone at click location
             click_pos = (event.xdata, event.ydata)
             removed = False
             
@@ -772,18 +744,15 @@ class GPSSimulationGUI(QMainWindow):
             return
         
         if self.drawing_mode == "add_jamming":
-            # Show preview of jamming zone
             radius = math.sqrt((event.xdata - self.area_start[0])**2 + 
                              (event.ydata - self.area_start[1])**2)
             
-            # Remove previous temp circle
             if self.temp_circle is not None:
                 try:
                     self.temp_circle.remove()
                 except:
                     pass
             
-            # Draw new temp circle
             self.temp_circle = patches.Circle(
                 self.area_start, radius, 
                 color='red', alpha=0.3, linestyle='--', linewidth=2
@@ -797,18 +766,15 @@ class GPSSimulationGUI(QMainWindow):
             return
         
         if self.drawing_mode == "add_jamming":
-            # Finalize jamming zone
             radius = math.sqrt((event.xdata - self.area_start[0])**2 + 
                              (event.ydata - self.area_start[1])**2)
             
-            # Only add if radius is reasonable
             if radius >= 0.5:
                 self.jamming_zones.append((self.area_start[0], self.area_start[1], radius))
                 print(f"[JAMMING] Added jamming zone at ({self.area_start[0]:.2f}, {self.area_start[1]:.2f}) radius {radius:.2f}")
             else:
                 print("[JAMMING] Jamming zone too small, ignoring")
             
-            # Clean up
             self.drawing_area = False
             self.area_start = None
             if self.temp_circle is not None:
@@ -824,10 +790,8 @@ class GPSSimulationGUI(QMainWindow):
         """Handle window close"""
         print("[SIM] Shutting down...")
         
-        # Stop timer
         self.timer.stop()
         
-        # Cleanup
         if self.gps_manager:
             self.gps_manager.stop()
             print("[GPS] GPS manager stopped")
@@ -836,7 +800,6 @@ class GPSSimulationGUI(QMainWindow):
             self.requirements_monitor.stop_monitoring()
             print("[REQUIREMENTS] Requirements monitor stopped")
         
-        # Close PyQt5 dashboard if open
         if self.notification_gui is not None:
             try:
                 self.notification_gui.close()
@@ -846,10 +809,6 @@ class GPSSimulationGUI(QMainWindow):
         print("[SIM] Cleanup complete")
         event.accept()
 
-
-# =============================================================================
-# MAIN EXECUTION
-# =============================================================================
 
 def main():
     """Main entry point"""
@@ -866,15 +825,14 @@ def main():
         
         print("[MAIN] Showing window...")
         window.show()
-        window.raise_()  # Bring to front
-        window.activateWindow()  # Activate window
+        window.raise_()
+        window.activateWindow()
         
         print("[MAIN] Window visible:", window.isVisible())
         print("[MAIN] Window geometry:", window.geometry())
         
-        # Remove stay-on-top flag after showing
         window.setWindowFlags(window.windowFlags() & ~Qt.WindowStaysOnTopHint)
-        window.show()  # Need to call show() again after changing flags
+        window.show()
         
         print("[SIM] GUI window should be visible now - simulation running...")
         print("[SIM] Running event loop...")

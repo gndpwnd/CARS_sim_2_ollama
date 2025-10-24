@@ -16,3 +16,4 @@ host-share
 **lightrag.log
 **/dickens/
 **/inputs/
+**check_ssh_setup.sh 

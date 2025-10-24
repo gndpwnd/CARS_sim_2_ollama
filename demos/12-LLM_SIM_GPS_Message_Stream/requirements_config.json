@@ -1,121 +1,39 @@
 {
-  "Signal Quality Indicators": {
-    "Fix Quality and Satellite Monitoring": {
-      "Fix Quality Degradation Detection": {
-        "name": "Fix Quality Level",
-        "threshold": 2,
-        "warning_threshold": 3,
+  "Core GPS Metrics": {
+    "Fix Quality": {
+      "Fix Quality Level": {
+        "name": "Fix Quality",
+        "threshold": 1,
+        "warning_threshold": 2,
         "unit": "quality_level",
         "current_value": 3,
-        "description": "GPS fix quality (1=No Fix, 2=2D, 3=3D, 4=DGPS, 5=RTK Float, 6=RTK Fixed)"
+        "description": "0=No Fix, 1=GPS, 2=DGPS, 3=RTK"
       },
-      "Satellite Count Critical Threshold": {
+      "Satellite Count": {
         "name": "Active Satellites",
         "threshold": 4,
         "warning_threshold": 6,
         "unit": "satellites",
         "current_value": 8,
-        "description": "Number of satellites used in position solution"
-      },
-      "Satellite Count Drop Rate Detection": {
-        "name": "Satellite Drop Rate",
-        "threshold": 3,
-        "warning_threshold": 2,
-        "unit": "sats/5sec",
-        "current_value": 0,
-        "description": "Rate of satellite loss over 5-second window"
+        "description": "Number of satellites in solution"
       }
     },
-    "Signal Strength Analysis": {
-      "Carrier-to-Noise Ratio Degradation Detection": {
-        "name": "C/N0 Degradation",
-        "threshold": 35,
-        "warning_threshold": 40,
+    "Signal Quality": {
+      "Signal Strength": {
+        "name": "Signal Quality",
+        "threshold": 30,
+        "warning_threshold": 35,
         "unit": "dB-Hz",
         "current_value": 45,
-        "description": "Carrier-to-noise ratio for tracked satellites"
+        "description": "Average C/N0 signal strength"
       },
-      "Automatic Gain Control Monitoring": {
-        "name": "AGC Jamming Level",
-        "threshold": 80,
-        "warning_threshold": 70,
+      "Jamming Level": {
+        "name": "Jamming Indicator",
+        "threshold": 70,
+        "warning_threshold": 50,
         "unit": "percent",
-        "current_value": 45,
-        "description": "AGC level indicating elevated noise floor"
-      }
-    }
-  },
-  "Data Integrity Monitoring": {
-    "Message Corruption Detection": {
-      "Checksum Failure Rate Monitoring": {
-        "name": "Checksum Failure Rate",
-        "threshold": 5,
-        "warning_threshold": 2,
-        "unit": "percent",
-        "current_value": 0.5,
-        "description": "Rate of NMEA/RTCM message checksum failures"
-      },
-      "Truncated Sentence Rate Monitoring": {
-        "name": "Truncated Message Rate",
-        "threshold": 10,
-        "warning_threshold": 5,
-        "unit": "percent",
-        "current_value": 1,
-        "description": "Rate of incomplete GPS message reception"
-      }
-    }
-  },
-  "Position and Velocity Validation": {
-    "Position Consistency Checks": {
-      "Position Jump Magnitude Detection": {
-        "name": "Position Jump",
-        "threshold": 10,
-        "warning_threshold": 5,
-        "unit": "meters",
-        "current_value": 0.8,
-        "description": "Magnitude of instantaneous position jumps"
-      },
-      "Rover Velocity Limit Monitoring": {
-        "name": "Velocity Check",
-        "threshold": 15,
-        "warning_threshold": 12,
-        "unit": "m/s",
-        "current_value": 2.1,
-        "description": "GPS-reported velocity vs. expected rover limits"
-      }
-    }
-  },
-  "RTK-Specific Indicators": {
-    "Carrier Phase Monitoring": {
-      "Carrier Phase Cycle Slip Detection": {
-        "name": "Cycle Slips",
-        "threshold": 5,
-        "warning_threshold": 3,
-        "unit": "slips/min",
-        "current_value": 1,
-        "description": "Carrier phase discontinuities on multiple satellites"
-      }
-    }
-  },
-  "Cross-Sensor Validation": {
-    "GPS-INS Comparison": {
-      "GPS-INS Position Consistency Check": {
-        "name": "GPS-INS Position Diff",
-        "threshold": 5,
-        "warning_threshold": 3,
-        "unit": "meters",
-        "current_value": 0.5,
-        "description": "Difference between GPS and INS position estimates"
-      }
-    },
-    "Time Validation": {
-      "Time-of-Week Anomaly Detection": {
-        "name": "GPS Time Anomalies",
-        "threshold": 2,
-        "warning_threshold": 1,
-        "unit": "anomalies/min",
         "current_value": 0,
-        "description": "GPS time jumps, backward time, or missing increments"
+        "description": "Estimated jamming intensity"
       }
     }
   }

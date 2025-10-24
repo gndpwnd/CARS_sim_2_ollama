@@ -12,13 +12,13 @@ import traceback
 import sys
 import httpx
 import asyncio
+import math
 from rag_store import add_log
 from llm_config import get_ollama_client, get_model_name
 
 # Try to import Qdrant
 try:
     from qdrant_client import QdrantClient
-    from qdrant_client.models import Distance, VectorParams, PointStruct
     QDRANT_ENABLED = True
 except ImportError:
     QDRANT_ENABLED = False
@@ -44,6 +44,11 @@ LLM_MODEL = get_model_name()
 # Simulation API endpoint
 SIMULATION_API_URL = "http://0.0.0.0:5001"
 
+# Simulation boundaries (from your config)
+X_RANGE = (-10, 10)
+Y_RANGE = (-10, 10)
+MISSION_END = (10, 10)
+
 # Create an MCP server
 app = FastAPI()
 mcp = FastMCP("Agent Movement and Simulation", app=app)
@@ -66,11 +71,11 @@ qdrant_client = None
 if QDRANT_ENABLED:
     try:
         qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
-        # Create collection if it doesn't exist
         try:
             qdrant_client.get_collection(COLLECTION_NAME)
             print(f"[QDRANT] Connected to collection '{COLLECTION_NAME}'")
         except:
+            from qdrant_client.models import Distance, VectorParams
             qdrant_client.create_collection(
                 collection_name=COLLECTION_NAME,
                 vectors_config=VectorParams(size=384, distance=Distance.COSINE)
@@ -115,7 +120,6 @@ def fetch_logs_from_qdrant(limit=50):
         return []
     
     try:
-        # Search for all points (no vector filtering)
         results = qdrant_client.scroll(
             collection_name=COLLECTION_NAME,
             limit=limit,
@@ -140,7 +144,101 @@ def fetch_logs_from_qdrant(limit=50):
         print(f"Error fetching from Qdrant: {e}")
         return []
 
-# Move agent tool
+
+# ============================================================================
+# STARTUP MENU
+# ============================================================================
+
+def generate_startup_menu():
+    """Generate startup menu with simulation info"""
+    menu = f"""🚀 **Multi-Agent Simulation Control System**
+
+**SIMULATION BOUNDARIES:**
+- X Range: {X_RANGE[0]} to {X_RANGE[1]}
+- Y Range: {Y_RANGE[0]} to {Y_RANGE[1]}
+- Mission Endpoint: ({MISSION_END[0]}, {MISSION_END[1]}) ⭐
+
+**AVAILABLE COMMANDS:**
+
+📍 **Movement Commands:**
+- `move [agent] to [x], [y]` - Move agent to coordinates
+  Example: "move agent1 to 5, 5"
+
+📊 **Status Commands:**
+- `status` - Get full simulation status report
+- `report` - Generate detailed agent analysis
+- `agents` - List all agents and positions
+- `agent [name]` - Get detailed info for specific agent
+
+🎯 **Simulation Control:**
+- `pause` - Pause the simulation
+- `resume` - Resume the simulation
+- `help` or `menu` - Show this menu again
+
+💬 **General Chat:**
+- Ask questions about the simulation
+- Request analysis of agent behavior
+- Get recommendations for agent movement
+
+**Current Status:** Ready to receive commands!
+"""
+    return menu
+
+
+@app.get("/startup_menu")
+async def get_startup_menu():
+    """Get the startup menu with current simulation status"""
+    try:
+        # Get current simulation status
+        async with httpx.AsyncClient() as client:
+            try:
+                status_response = await client.get(f"{SIMULATION_API_URL}/status", timeout=2.0)
+                agents_response = await client.get(f"{SIMULATION_API_URL}/agents", timeout=2.0)
+                
+                sim_status = {}
+                agents_info = {}
+                
+                if status_response.status_code == 200:
+                    sim_status = status_response.json()
+                
+                if agents_response.status_code == 200:
+                    agents_info = agents_response.json().get("agents", {})
+            except:
+                sim_status = {}
+                agents_info = {}
+        
+        menu = generate_startup_menu()
+        
+        # Add current agent info if available
+        if agents_info:
+            menu += "\n**CURRENT AGENTS:**\n"
+            for agent_id, data in agents_info.items():
+                status = "🔴 JAMMED" if data.get('jammed') else "🟢 CLEAR"
+                pos = data.get('position', [0, 0])
+                menu += f"• {agent_id}: Position ({pos[0]:.1f}, {pos[1]:.1f}) - {status}\n"
+        
+        return {
+            "menu": menu,
+            "simulation_status": sim_status,
+            "agents": agents_info,
+            "boundaries": {
+                "x_range": X_RANGE,
+                "y_range": Y_RANGE,
+                "mission_end": MISSION_END
+            }
+        }
+        
+    except Exception as e:
+        return {
+            "menu": generate_startup_menu(),
+            "error": str(e)
+        }
+
+
+# ============================================================================
+# MCP TOOLS
+# ============================================================================
+
 @mcp.tool()
 async def move_agent(agent: str, x: float, y: float) -> dict:
     """Move an agent to specific coordinates"""
@@ -150,7 +248,8 @@ async def move_agent(agent: str, x: float, y: float) -> dict:
         try:
             response = await client.post(
                 f"{SIMULATION_API_URL}/move_agent",
-                json={"agent": agent, "x": x, "y": y}
+                json={"agent": agent, "x": x, "y": y},
+                timeout=5.0
             )
             
             if response.status_code == 200:
@@ -199,229 +298,362 @@ async def move_agent(agent: str, x: float, y: float) -> dict:
                 "message": error_msg
             }
 
-# Process natural language commands
-@app.post("/llm_command")
-async def llm_command(request: Request):
-    data = await request.json()
-    command = data.get("message", "")
 
-    print(f"[RECEIVED COMMAND] {command}")
-    
-    timestamp = datetime.now().isoformat()
-    add_log(command, {
-        "role": "user",
-        "timestamp": timestamp,
-        "agent_id": "user",
-        "source": "command"
-    })
+# ============================================================================
+# REPORT GENERATION FUNCTIONS
+# ============================================================================
 
-    available_agents = {}
-    live_agent_data = {}
+async def generate_status_report():
+    """Generate human-friendly status report"""
     try:
         async with httpx.AsyncClient() as client:
-            agents_response = await client.get(f"{SIMULATION_API_URL}/agents")
-            status_response = await client.get(f"{SIMULATION_API_URL}/status")
+            status_response = await client.get(f"{SIMULATION_API_URL}/status", timeout=2.0)
+            agents_response = await client.get(f"{SIMULATION_API_URL}/agents", timeout=2.0)
             
+            if status_response.status_code != 200:
+                return {"response": "❌ Could not retrieve simulation status"}
+            
+            status = status_response.json()
+            agents = agents_response.json().get("agents", {})
+            
+            report = "📊 **SIMULATION STATUS REPORT**\n\n"
+            report += f"**Status:** {'🟢 Running' if status.get('running') else '🔴 Paused'}\n"
+            report += f"**Iteration:** {status.get('iteration_count', 0)}\n"
+            report += f"**Active Agents:** {len(agents)}\n\n"
+            
+            # Agent summary
+            jammed_count = sum(1 for a in agents.values() if a.get('jammed'))
+            clear_count = len(agents) - jammed_count
+            
+            report += f"**Agent Status:**\n"
+            report += f"• 🟢 Clear: {clear_count}\n"
+            report += f"• 🔴 Jammed: {jammed_count}\n\n"
+            
+            # Individual agents
+            report += "**Individual Agent Status:**\n"
+            for agent_id, data in sorted(agents.items()):
+                status_icon = "🔴" if data.get('jammed') else "🟢"
+                pos = data.get('position', [0, 0])
+                comm = data.get('communication_quality', 0)
+                
+                report += f"{status_icon} **{agent_id}**\n"
+                report += f"  Position: ({pos[0]:.2f}, {pos[1]:.2f})\n"
+                report += f"  Comm Quality: {comm:.2f}\n"
+                
+                # Distance to mission endpoint
+                dist = math.sqrt((MISSION_END[0] - pos[0])**2 + (MISSION_END[1] - pos[1])**2)
+                report += f"  Distance to Goal: {dist:.2f}\n\n"
+            
+            return {"response": report}
+            
+    except Exception as e:
+        return {"response": f"❌ Error generating report: {str(e)}"}
+
+async def generate_detailed_report():
+    """Generate detailed analysis report using LLM"""
+    try:
+        # Fetch all data
+        logs = fetch_logs_from_db(limit=50)
+        
+        async with httpx.AsyncClient() as client:
+            status_response = await client.get(f"{SIMULATION_API_URL}/status", timeout=2.0)
+            agents_response = await client.get(f"{SIMULATION_API_URL}/agents", timeout=2.0)
+        
+        # Compile context
+        context = "SIMULATION DATA:\n\n"
+        
+        if status_response.status_code == 200:
+            status = status_response.json()
+            context += f"Running: {status.get('running')}\n"
+            context += f"Iteration: {status.get('iteration_count')}\n\n"
+        
+        if agents_response.status_code == 200:
+            agents = agents_response.json().get("agents", {})
+            context += "AGENTS:\n"
+            for agent_id, data in agents.items():
+                context += f"{agent_id}: Pos {data.get('position')}, "
+                context += f"Jammed: {data.get('jammed')}, "
+                context += f"Comm: {data.get('communication_quality')}\n"
+        
+        # Add recent logs
+        context += "\nRECENT EVENTS:\n"
+        for log in logs[:20]:
+            context += f"- {log.get('text', '')}\n"
+        
+        # Ask LLM for analysis
+        prompt = f"""{context}
+
+Based on the above simulation data, provide a comprehensive human-friendly report including:
+1. Overall simulation health
+2. Agent performance analysis
+3. Jamming impact assessment
+4. Recommendations for agent movement
+5. Any anomalies or concerns
+
+Keep the report concise but informative."""
+        
+        response = ollama_client.chat(
+            model=LLM_MODEL,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        llm_report = response['message']['content']
+        
+        return {"response": f"📋 **DETAILED ANALYSIS REPORT**\n\n{llm_report}"}
+        
+    except Exception as e:
+        return {"response": f"❌ Error generating detailed report: {str(e)}"}
+
+
+async def list_agents():
+    """List all agents with basic info"""
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{SIMULATION_API_URL}/agents", timeout=2.0)
+            
+            if response.status_code != 200:
+                return {"response": "❌ Could not retrieve agent list"}
+            
+            agents = response.json().get("agents", {})
+            
+            if not agents:
+                return {"response": "⚠️ No agents currently in simulation"}
+            
+            report = "🤖 **AGENT LIST**\n\n"
+            for agent_id, data in sorted(agents.items()):
+                icon = "🔴" if data.get('jammed') else "🟢"
+                pos = data.get('position', [0, 0])
+                report += f"{icon} **{agent_id}**: ({pos[0]:.2f}, {pos[1]:.2f})\n"
+            
+            return {"response": report}
+            
+    except Exception as e:
+        return {"response": f"❌ Error listing agents: {str(e)}"}
+
+
+async def get_agent_info(agent_name: str):
+    """Get detailed info for a specific agent"""
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{SIMULATION_API_URL}/agents", timeout=2.0)
+            
+            if response.status_code != 200:
+                return {"response": "❌ Could not retrieve agent information"}
+            
+            agents = response.json().get("agents", {})
+            
+            if agent_name not in agents:
+                return {"response": f"❌ Agent '{agent_name}' not found"}
+            
+            data = agents[agent_name]
+            
+            report = f"🤖 **{agent_name.upper()} DETAILS**\n\n"
+            report += f"**Position:** ({data.get('position', [0, 0])[0]:.2f}, {data.get('position', [0, 0])[1]:.2f})\n"
+            report += f"**Status:** {'🔴 JAMMED' if data.get('jammed') else '🟢 CLEAR'}\n"
+            report += f"**Comm Quality:** {data.get('communication_quality', 0):.2f}\n"
+            
+            pos = data.get('position', [0, 0])
+            dist = math.sqrt((MISSION_END[0] - pos[0])**2 + (MISSION_END[1] - pos[1])**2)
+            report += f"**Distance to Goal:** {dist:.2f}\n"
+            
+            # Get recent logs for this agent
+            logs = fetch_logs_from_db(limit=100)
+            agent_logs = [l for l in logs if l['metadata'].get('agent_id') == agent_name][:5]
+            
+            if agent_logs:
+                report += f"\n**Recent Activity:**\n"
+                for log in agent_logs:
+                    report += f"• {log.get('text', '')[:100]}...\n"
+            
+            return {"response": report}
+            
+    except Exception as e:
+        return {"response": f"❌ Error getting agent info: {str(e)}"}
+
+
+# ============================================================================
+# CHAT ENDPOINT
+# ============================================================================
+
+@app.post("/chat")
+async def chat(request: Request):
+    """Main chat endpoint with LLM interpretation"""
+    try:
+        data = await request.json()
+        user_message = data.get('message', '').strip()
+        
+        # Log user message
+        timestamp = datetime.now().isoformat()
+        add_log(user_message, {
+            "role": "user",
+            "timestamp": timestamp,
+            "source": "chat"
+        })
+        
+        # Handle special commands (quick responses without LLM)
+        lower_msg = user_message.lower()
+        
+        if lower_msg in ['help', 'menu', 'commands']:
+            menu = generate_startup_menu()
+            return {"response": menu}
+        
+        if lower_msg == 'status':
+            return await generate_status_report()
+        
+        if lower_msg == 'report':
+            return await generate_detailed_report()
+        
+        if lower_msg == 'agents':
+            return await list_agents()
+        
+        if lower_msg.startswith('agent '):
+            agent_name = lower_msg.replace('agent ', '').strip()
+            return await get_agent_info(agent_name)
+        
+        # Check if it's a movement command
+        if any(word in lower_msg for word in ['move', 'go to', 'navigate', 'send']):
+            return await handle_movement_command(user_message)
+        
+        # Otherwise, let LLM handle general conversation
+        return await handle_general_chat(user_message)
+        
+    except Exception as e:
+        print(f"[CHAT ERROR] {e}")
+        traceback.print_exc()
+        return {"response": f"❌ Error: {str(e)}"}
+
+
+async def handle_movement_command(command: str):
+    """Handle movement commands with LLM parsing"""
+    try:
+        # Get available agents
+        async with httpx.AsyncClient() as client:
+            agents_response = await client.get(f"{SIMULATION_API_URL}/agents", timeout=2.0)
+            
+            available_agents = {}
             if agents_response.status_code == 200:
                 available_agents = agents_response.json().get("agents", {})
-                print(f"[AVAILABLE AGENTS] {list(available_agents.keys())}")
-            
-            if status_response.status_code == 200:
-                live_agent_data = status_response.json()
-                print(f"[LIVE AGENT DATA] Retrieved for {len(live_agent_data.get('agent_positions', {}))} agents")
-    except Exception as e:
-        print(f"[ERROR] Failed to fetch agent data: {e}")
-        available_agents = {}
-        live_agent_data = {}
-
-    prompt = f"""You are an AI that controls agents in a 2D simulation.
+        
+        prompt = f"""You are an AI that controls agents in a 2D simulation.
 
 Available agents: {", ".join(available_agents.keys()) if available_agents else "No agents available"}
 
-User command: "{command}"
+Simulation boundaries:
+- X Range: {X_RANGE[0]} to {X_RANGE[1]}
+- Y Range: {Y_RANGE[0]} to {Y_RANGE[1]}
 
-LIVE AGENT STATUS:
-{format_live_agent_data(live_agent_data)}
+User command: "{command}"
 
 If this is a movement command, extract:
 1. The agent name (must match an available agent)
-2. The x coordinate (number)
-3. The y coordinate (number)
+2. The x coordinate (number within range)
+3. The y coordinate (number within range)
 
 Respond ONLY with the agent name and coordinates in this exact format:
 agent_name,x,y
 
-If it's not a movement command, respond with: "Not a movement command"
+If it's not a valid movement command, respond with: "Not a movement command"
 """
-
-    try:
+        
         response = ollama_client.chat(model=LLM_MODEL, messages=[
             {"role": "user", "content": prompt}
         ])
         
         raw_response = response['message']['content'].strip()
-        print(f"[OLLAMA RESPONSE] {raw_response}")
-
+        print(f"[LLM RESPONSE] {raw_response}")
+        
         if "," in raw_response and len(raw_response.split(",")) == 3:
             agent_name, x_str, y_str = raw_response.split(",")
             agent_name = agent_name.strip()
             
             if agent_name not in available_agents:
-                return {"response": f"Error: Agent '{agent_name}' not found in simulation"}
+                return {"response": f"❌ Agent '{agent_name}' not found in simulation"}
             
             try:
                 x = float(x_str.strip())
                 y = float(y_str.strip())
                 
+                # Validate coordinates
+                if not (X_RANGE[0] <= x <= X_RANGE[1] and Y_RANGE[0] <= y <= Y_RANGE[1]):
+                    return {"response": f"❌ Coordinates ({x}, {y}) are outside simulation boundaries"}
+                
                 move_result = await move_agent(agent_name, x, y)
                 
                 if move_result.get("success"):
-                    response_data = {
-                        "response": f"Moving {agent_name} to ({x}, {y}). {move_result.get('message', '')}",
-                        "live_data": {
-                            agent_name: live_agent_data.get('agent_positions', {}).get(agent_name)
-                        }
-                    }
-                    return response_data
+                    return {"response": move_result.get('message', '')}
                 else:
-                    return {"response": f"Failed to move {agent_name}: {move_result.get('message', 'Unknown error')}"}
+                    return {"response": f"❌ Failed to move {agent_name}: {move_result.get('message', 'Unknown error')}"}
             
             except ValueError:
-                return {"response": f"Invalid coordinates: {x_str}, {y_str}"}
+                return {"response": f"❌ Invalid coordinates: {x_str}, {y_str}"}
         
-        return {"response": raw_response if raw_response else "Command not understood"}
-
+        return {"response": "❌ Could not parse movement command. Use format: 'move agent1 to 5, 5'"}
+        
     except Exception as e:
-        print(f"[ERROR] {e}")
-        traceback.print_exc()
-        
-        add_log(f"Error processing command: {e}", {
-            "role": "system",
-            "timestamp": datetime.now().isoformat(),
-            "source": "command",
-            "error": str(e)
-        })
-        
-        return {
-            "response": f"Error processing command: {e}"
-        }
+        return {"response": f"❌ Error processing movement: {str(e)}"}
 
-def format_live_agent_data(live_data):
-    """Format live agent data for LLM prompt"""
-    if not live_data or not live_data.get('agent_positions'):
-        return "No live agent data available"
-    
-    formatted = []
-    for agent_id, data in live_data['agent_positions'].items():
-        status = "JAMMED" if data.get('jammed', False) else "CLEAR"
-        comm_quality = data.get('communication_quality', 0)
-        pos = data.get('position', {})
-        formatted.append(
-            f"{agent_id}: Position ({pos.get('x', '?')}, {pos.get('y', '?')}) - {status} - Comm: {comm_quality:.2f}"
-        )
-    
-    return "\n".join(formatted)
 
-# Chat endpoint with streaming
-@app.post("/chat")
-async def chat(request: Request):
+async def handle_general_chat(message: str):
+    """Handle general conversation with LLM"""
     try:
-        data = await request.json()
-        user_message = data.get('message')
-        if not user_message:
-            return {"error": "No message provided"}
+        # Get current simulation context
+        logs = fetch_logs_from_db(limit=30)
         
-        logs = fetch_logs_from_db()
-        print(f"Retrieved {len(logs)} logs for RAG context")
+        async with httpx.AsyncClient() as client:
+            status_response = await client.get(f"{SIMULATION_API_URL}/status", timeout=2.0)
+            agents_response = await client.get(f"{SIMULATION_API_URL}/agents", timeout=2.0)
         
-        sim_status = {}
-        try:
-            async with httpx.AsyncClient() as client:
-                status_response = await client.get(f"{SIMULATION_API_URL}/status")
-                if status_response.status_code == 200:
-                    sim_status = status_response.json()
-        except Exception as e:
-            print(f"Error fetching simulation status: {e}")
-            sim_status = {"error": str(e)}
+        context = "Current Simulation State:\n\n"
         
-        logs_sorted = sorted(
-            logs,
-            key=lambda x: x.get("metadata", {}).get("timestamp", x.get("created_at", "")),
-            reverse=True
-        )
+        if status_response.status_code == 200:
+            status = status_response.json()
+            context += f"Status: {'Running' if status.get('running') else 'Paused'}\n"
+            context += f"Iteration: {status.get('iteration_count', 0)}\n\n"
         
-        simulation_context = []
-        for log in logs_sorted:
-            metadata = log.get("metadata", {})
-            agent_id = metadata.get("agent_id", "Unknown")
-            position = metadata.get("position", "Unknown")
-            jammed = "JAMMED" if metadata.get("jammed", False) else "CLEAR"
-            timestamp = metadata.get("timestamp", "Unknown time")
-            text = log.get("text", "")
-            
-            entry = f"LOG: Agent {agent_id} at position {position} is {jammed} at {timestamp}: {text}"
-            simulation_context.append(entry)
+        if agents_response.status_code == 200:
+            agents = agents_response.json().get("agents", {})
+            context += "Agents:\n"
+            for agent_id, data in agents.items():
+                context += f"- {agent_id}: Position {data.get('position')}, "
+                context += f"{'JAMMED' if data.get('jammed') else 'CLEAR'}\n"
         
-        if sim_status:
-            simulation_context.append("\nCURRENT SIMULATION STATUS:")
-            simulation_context.append(f"Running: {sim_status.get('running', 'Unknown')}")
-            simulation_context.append(f"Iteration Count: {sim_status.get('iteration_count', 'Unknown')}")
-            
-            agent_positions = sim_status.get('agent_positions', {})
-            if agent_positions:
-                simulation_context.append("Current Agent Positions:")
-                for agent_id, data in agent_positions.items():
-                    jammed_status = "JAMMED" if data.get("jammed", False) else "CLEAR"
-                    comm_quality = data.get("communication_quality", 0)
-                    simulation_context.append(f"  {agent_id}: Position ({data.get('x', 0)}, {data.get('y', 0)}) - {jammed_status} - Comm Quality: {comm_quality:.2f}")
+        # Add recent activity
+        context += "\nRecent Activity:\n"
+        for log in logs[:10]:
+            context += f"- {log.get('text', '')}\n"
         
-        context_text = "\n".join(simulation_context)
-        
-        system_prompt = """You are an assistant for a Multi-Agent Simulation system. Provide helpful, accurate information about the simulation based on the logs and current status.
+        prompt = f"""{context}
 
-Keep your responses concise and focused on answering the user's questions.
-- If the user is asking about agent positions or statuses, give them the current information
-- Don't recite all the log history unless specifically asked
-- For questions about recent commands, just give a brief status update
-"""
+User Question: {message}
+
+You are an assistant helping monitor a multi-agent simulation. The agents are trying to reach the mission endpoint at ({MISSION_END[0]}, {MISSION_END[1]}) while avoiding jamming zones.
+
+Provide a helpful, concise response based on the current simulation state. If you need more specific data, suggest what command the user should run (like 'status', 'report', or 'agents')."""
         
         response = ollama_client.chat(
             model=LLM_MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"SIMULATION LOGS AND STATUS:\n{context_text}\n\nUSER QUERY: {user_message}\n\nAnswer based only on information provided above."}
-            ]
+            messages=[{"role": "user", "content": prompt}]
         )
         
-        ollama_response = ""
-        if hasattr(response, 'message') and response.message:
-            if hasattr(response.message, 'content') and response.message.content:
-                ollama_response = response.message.content
+        llm_response = response['message']['content']
         
-        if not ollama_response.strip():
-            ollama_response = "I'm unable to provide an answer based on the available logs and simulation status."
-        
-        timestamp = datetime.now().isoformat()
-        add_log(user_message, {
-            "role": "user",
-            "timestamp": timestamp,
-            "agent_id": "user",
-            "source": "chat"
-        })
-        add_log(ollama_response, {
+        # Log assistant response
+        add_log(llm_response, {
             "role": "assistant",
-            "timestamp": timestamp,
-            "agent_id": "ollama",
+            "timestamp": datetime.now().isoformat(),
             "source": "chat"
         })
         
-        return {"response": ollama_response}
+        return {"response": llm_response}
+        
     except Exception as e:
-        print(f"ERROR in chat route: {e}")
-        traceback.print_exc()
-        return {"error": str(e), "error_type": type(e).__name__}
+        return {"response": f"❌ Error in conversation: {str(e)}"}
 
-# Server-Sent Events for real-time streaming
+
+# ============================================================================
+# STREAMING ENDPOINTS
+# ============================================================================
+
 @app.get("/stream/postgresql")
 async def stream_postgresql():
     """Stream PostgreSQL logs in real-time"""
@@ -445,6 +677,7 @@ async def stream_postgresql():
                 await asyncio.sleep(1)
     
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
 
 @app.get("/stream/qdrant")
 async def stream_qdrant():
@@ -473,7 +706,7 @@ async def stream_qdrant():
     
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
-# Get initial data endpoints
+
 @app.get("/data/postgresql")
 async def get_postgresql_data():
     """Get PostgreSQL logs"""
@@ -482,6 +715,7 @@ async def get_postgresql_data():
         return {"logs": logs, "source": "postgresql"}
     except Exception as e:
         return {"error": str(e)}
+
 
 @app.get("/data/qdrant")
 async def get_qdrant_data():
@@ -492,54 +726,11 @@ async def get_qdrant_data():
     except Exception as e:
         return {"error": str(e)}
 
-# Simulation info and control endpoints
-@app.get("/simulation_info")
-async def get_simulation_info():
-    """Get information about the simulation configuration"""
-    try:
-        async with httpx.AsyncClient() as client:
-            params_response = await client.get(f"{SIMULATION_API_URL}/simulation_params")
-            agents_response = await client.get(f"{SIMULATION_API_URL}/agents")
-            
-            if params_response.status_code == 200 and agents_response.status_code == 200:
-                params = params_response.json()
-                agents = agents_response.json()
-                
-                return {
-                    "simulation_params": params,
-                    "agents": agents.get("agents", {})
-                }
-            else:
-                return {
-                    "error": "Failed to fetch simulation information",
-                    "params_status": params_response.status_code,
-                    "agents_status": agents_response.status_code
-                }
-    except Exception as e:
-        print(f"Error fetching simulation info: {e}")
-        return {"error": str(e)}
 
-@app.post("/control/pause")
-async def pause_simulation():
-    """Pause the simulation via API"""
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(f"{SIMULATION_API_URL}/control/pause")
-            return response.json()
-    except Exception as e:
-        return {"error": str(e)}
+# ============================================================================
+# UTILITY ENDPOINTS
+# ============================================================================
 
-@app.post("/control/continue")
-async def continue_simulation():
-    """Continue the simulation via API"""
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(f"{SIMULATION_API_URL}/control/continue")
-            return response.json()
-    except Exception as e:
-        return {"error": str(e)}
-
-# Root endpoint to serve the HTML
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     try:
@@ -549,13 +740,13 @@ async def index(request: Request):
         print(error_msg)
         return HTMLResponse(content=f"<html><body>{error_msg}</body></html>", status_code=500)
 
-# Health check endpoint
+
 @app.get("/health")
 async def health_check():
     """Check if the server and simulation API are reachable"""
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get(f"{SIMULATION_API_URL}/")
+            response = await client.get(f"{SIMULATION_API_URL}/", timeout=2.0)
             simulation_status = "online" if response.status_code == 200 else "offline"
     except Exception as e:
         simulation_status = f"unreachable: {str(e)}"
@@ -569,8 +760,12 @@ async def health_check():
         "timestamp": datetime.now().isoformat()
     }
 
+
 if __name__ == "__main__":
-    print("Starting integrated MCP server with 3-column chat app...")
+    print("="*60)
+    print("Starting MCP Chatapp Server")
+    print("="*60)
     print(f"Python version: {sys.version}")
     print("Visit http://0.0.0.0:5000")
+    print("="*60)
     uvicorn.run(app, host="0.0.0.0", port=5000)
