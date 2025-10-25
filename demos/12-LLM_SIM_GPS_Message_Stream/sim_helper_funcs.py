@@ -4,6 +4,8 @@ import numpy as np
 import re
 import datetime
 
+# REMOVED: from llm_config import chat_with_retry  # <-- DELETE THIS LINE
+
 def convert_numpy_coords(obj):
     """
     Recursively convert numpy data types to native Python types for JSON serialization.
@@ -188,63 +190,9 @@ def algorithm_make_move(agent_id, current_pos, jamming_center, jamming_radius,
     suggestion[1] = max(min(suggestion[1], y_range[1]), y_range[0])
     
     return (round_coord(suggestion[0]), round_coord(suggestion[1]))
-    
-def llm_make_move(agent_id, swarm_pos_dict, num_history_segments, ollama, LLM_MODEL, MAX_CHARS_PER_AGENT, 
-                 MAX_RETRIES, jamming_center, jamming_radius, max_movement_per_step, x_range, y_range):
-    """Use LLM to determine movement for jammed agents"""
-    # Get the last positions for the agent
-    last_positions = swarm_pos_dict[agent_id][-num_history_segments:]
-    last_valid_position = last_positions[-1][:2]  # Get the last recorded position
-    
-    # Prepare a movement history string for the last positions
-    position_history_str = "\n".join([f"({pos[0]}, {pos[1]})" for pos in last_positions])
-    
-    print(f"Prompting LLM for new coordinate for {agent_id} from {last_valid_position}")
-    
-    # Create the prompt message with the position history
-    prompt = f"Agent {agent_id} is jammed at {last_valid_position}. " \
-             f"Here are the last {num_history_segments} positions:\n{position_history_str}\n" \
-             f"Provide exactly one new coordinate pair as (x, y) with both values being numbers. " \
-             f"Your response must be 25 characters or less and should only contain the coordinate. "
-    
-    print(f"Full prompt sent to LLM: {prompt}")
-    
-    # Try multiple times to get a valid response
-    for attempt in range(MAX_RETRIES):
-        try:
-            # Send the prompt with a timeout
-            response = ollama.chat(
-                model=LLM_MODEL,
-                messages=[{"role": "user", "content": prompt}]
-            )
-            
-            # Get and print the full response
-            response_content = response.get('message', {}).get('content', '')
-            print(f"Full LLM response: \"{response_content}\"")
-            
-            # Check if response exceeds character limit
-            if len(response_content) > MAX_CHARS_PER_AGENT:
-                print(f"Response exceeds character limit ({len(response_content)} > {MAX_CHARS_PER_AGENT}), retrying...")
-                continue
-            
-            # Parse the response for the new coordinate
-            new_coordinate = parse_llm_response(response_content)
-            
-            if new_coordinate:
-                print(f"LLM provided new coordinate for {agent_id}: {new_coordinate}")
-                return new_coordinate
-            else:
-                print(f"Failed to parse coordinates, retrying (attempt {attempt+1}/{MAX_RETRIES})...")
-        
-        except Exception as e:
-            print(f"Error getting LLM response: {e}. Retrying (attempt {attempt+1}/{MAX_RETRIES})...")
-    
-    # If we get here, we didn't get a valid response after all retries
-    print(f"Failed to get valid coordinates after {MAX_RETRIES} attempts. Using algorithm instead.")
-    
-    # Fall back to algorithm if LLM fails
-    return algorithm_make_move(agent_id, last_valid_position, jamming_center, jamming_radius, 
-                              max_movement_per_step, x_range, y_range)
+
+# DELETED: llm_make_move() function - LLM interaction should go through MCP API
+# DELETED: parse_llm_response() function - no longer needed
 
 def get_last_safe_position(agent_id, last_safe_position, swarm_pos_dict, high_comm_qual):
     """

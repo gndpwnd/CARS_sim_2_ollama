@@ -358,3 +358,57 @@ if __name__ == "__main__":
     print(all_formatted)
     
     print("\n✅ RAG system test complete")
+
+def get_known_agent_ids(limit: int = 50) -> List[str]:
+    """
+    Discover agent IDs from stored telemetry data
+    
+    Args:
+        limit: Number of recent records to scan
+    
+    Returns:
+        List of unique agent IDs found in stored data
+    """
+    agent_ids = set()
+    
+    # Try Qdrant first (telemetry data)
+    if QDRANT_AVAILABLE:
+        try:
+            from qdrant_store import qdrant_client, TELEMETRY_COLLECTION
+            
+            if qdrant_client:
+                # Scroll through recent telemetry
+                results = qdrant_client.scroll(
+                    collection_name=TELEMETRY_COLLECTION,
+                    limit=limit,
+                    with_payload=True,
+                    with_vectors=False
+                )[0]
+                
+                for point in results:
+                    agent_id = point.payload.get('agent_id')
+                    if agent_id:
+                        agent_ids.add(agent_id)
+                
+                print(f"[RAG] Found {len(agent_ids)} agents from Qdrant: {agent_ids}")
+        except Exception as e:
+            print(f"[RAG] Error scanning Qdrant for agents: {e}")
+    
+    # Fallback to PostgreSQL
+    if not agent_ids and POSTGRESQL_AVAILABLE:
+        try:
+            from postgresql_store import get_messages_by_type
+            
+            # Get recent telemetry messages
+            recent = get_messages_by_type('telemetry', limit=limit)
+            
+            for msg in recent:
+                source = msg.get('metadata', {}).get('source')
+                if source and source.startswith('agent'):
+                    agent_ids.add(source)
+            
+            print(f"[RAG] Found {len(agent_ids)} agents from PostgreSQL: {agent_ids}")
+        except Exception as e:
+            print(f"[RAG] Error scanning PostgreSQL for agents: {e}")
+    
+    return sorted(list(agent_ids))

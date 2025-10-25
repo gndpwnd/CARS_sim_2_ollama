@@ -31,15 +31,16 @@ class ProcessManager:
         self.process_names: List[str] = []
         
     def start_process(self, name: str, command: List[str], 
-                     wait_time: float = 2.0) -> Optional[subprocess.Popen]:
+                 wait_time: float = 2.0) -> Optional[subprocess.Popen]:
         """Start a subprocess and track it"""
         print(f"{Colors.OKBLUE}[STARTUP] Starting {name}...{Colors.ENDC}")
         
         try:
+            # CHANGED: Don't capture stdout/stderr - let them print to console
             process = subprocess.Popen(
                 command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=None,  # Changed from subprocess.PIPE
+                stderr=None,  # Changed from subprocess.PIPE
                 text=True
             )
             
@@ -47,9 +48,6 @@ class ProcessManager:
             
             if process.poll() is not None:
                 print(f"{Colors.FAIL}[ERROR] {name} failed to start{Colors.ENDC}")
-                stdout, stderr = process.communicate()
-                if stderr:
-                    print(f"{Colors.FAIL}{stderr}{Colors.ENDC}")
                 return None
             
             self.processes.append(process)
@@ -65,7 +63,7 @@ class ProcessManager:
         except Exception as e:
             print(f"{Colors.FAIL}[ERROR] Failed to start {name}: {e}{Colors.ENDC}")
             return None
-    
+
     def stop_all(self):
         """Stop all managed processes"""
         print(f"\n{Colors.WARNING}[SHUTDOWN] Stopping all processes...{Colors.ENDC}")

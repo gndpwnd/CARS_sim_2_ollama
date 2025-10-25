@@ -14,19 +14,26 @@ import httpx
 import asyncio
 import math
 
+
+# Around line 20-40, replace the LLM initialization:
+
+import llm_config
+from llm_config import get_ollama_client, get_model_name, initialize_llm, chat_with_retry
+
+# Initialize LLM with preloading
+print("[MCP] Initializing LLM...")
+ollama_client, llm_ready = initialize_llm(preload=True)
+LLM_MODEL = get_model_name()
+
+if llm_ready:
+    print(f"[MCP] ✓ LLM ready: {LLM_MODEL} at {llm_config.OLLAMA_HOST}")
+else:
+    print(f"[MCP] ⚠ LLM initialization had issues, will retry on first request")
+
+
 # Import new storage system
 from postgresql_store import add_log, get_conversation_history
 from rag import get_rag, format_for_llm, format_all_agents_for_llm
-
-import llm_config
-
-from llm_config import get_ollama_client, get_model_name
-
-ollama_client = get_ollama_client()
-LLM_MODEL = get_model_name()
-
-print(f"[MCP] Using Ollama model: {LLM_MODEL}")
-print(f"[MCP] Ollama host: {llm_config.OLLAMA_HOST}")
 
 # Try to import Qdrant
 try:
@@ -136,10 +143,24 @@ def fetch_logs_from_qdrant(limit=50):
         logs = []
         for point in results:
             payload = point.payload
+            
+            # Extract metadata - it's stored directly in payload, not nested
+            metadata = {
+                'agent_id': payload.get('agent_id'),
+                'position': (payload.get('position_x', 0), payload.get('position_y', 0)),
+                'jammed': payload.get('jammed', False),
+                'communication_quality': payload.get('communication_quality', 0),
+                'timestamp': payload.get('timestamp'),
+                'iteration': payload.get('iteration'),
+                'gps_satellites': payload.get('gps_satellites'),
+                'gps_signal_quality': payload.get('gps_signal_quality'),
+                'gps_fix_quality': payload.get('gps_fix_quality')
+            }
+            
             logs.append({
                 "log_id": str(point.id),
-                "text": payload.get("text", ""),
-                "metadata": payload.get("metadata", {}),
+                "text": payload.get("text", f"Telemetry update for {payload.get('agent_id', 'unknown')}"),
+                "metadata": metadata,
                 "created_at": payload.get("timestamp", datetime.now().isoformat()),
                 "source": "qdrant",
                 "vector_score": None
@@ -149,7 +170,6 @@ def fetch_logs_from_qdrant(limit=50):
     except Exception as e:
         print(f"Error fetching from Qdrant: {e}")
         return []
-
 
 # ============================================================================
 # STARTUP MENU
@@ -364,10 +384,16 @@ Based on the above simulation data, provide a comprehensive human-friendly repor
 
 Keep the report concise but informative."""
         
-        response = ollama_client.chat(
-            model=LLM_MODEL,
+        response = chat_with_retry(
+            ollama_client,
+            LLM_MODEL,
             messages=[{"role": "user", "content": prompt}]
         )
+
+        if response is None:
+            return {"response": "✗ LLM connection error. Is Ollama running? Check: ./launch_ollama.sh"}
+
+        llm_response = response['message']['content']
         
         llm_report = response['message']['content']
         
@@ -512,9 +538,16 @@ agent_name,x,y
 If it's not a valid movement command, respond with: "Not a movement command"
 """
         
-        response = ollama_client.chat(model=LLM_MODEL, messages=[
-            {"role": "user", "content": prompt}
-        ])
+        response = chat_with_retry(
+            ollama_client,
+            LLM_MODEL,
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        if response is None:
+            return {"response": "✗ LLM connection error. Is Ollama running? Check: ./launch_ollama.sh"}
+
+        llm_response = response['message']['content']
         
         raw_response = response['message']['content'].strip()
         print(f"[LLM RESPONSE] {raw_response}")
@@ -552,24 +585,32 @@ If it's not a valid movement command, respond with: "Not a movement command"
 
 async def handle_general_chat(message: str):
     """Handle general conversation with LLM using RAG"""
+    print(f"\n{'='*60}")
+    print(f"[CHAT] handle_general_chat() called")
+    print(f"[CHAT] Message: {message}")
+    print(f"{'='*60}")
+    
     try:
-        # Get available agents
-        async with httpx.AsyncClient() as client:
-            agents_response = await client.get(f"{SIMULATION_API_URL}/agents", timeout=2.0)
+        # Discover agents from stored data (no API needed!)
+        print("[CHAT] Discovering agents from stored data...")
+        from rag import get_known_agent_ids
         
-        agent_ids = []
-        if agents_response.status_code == 200:
-            agents_data = agents_response.json().get("agents", {})
-            agent_ids = list(agents_data.keys())
+        agent_ids = get_known_agent_ids(limit=100)
+        print(f"[CHAT] Found {len(agent_ids)} agents: {agent_ids}")
         
         # Build context using RAG
+        print("[CHAT] Building context from RAG...")
         if agent_ids:
             context = format_all_agents_for_llm(agent_ids)
+            print(f"[CHAT] Context built: {len(context)} characters")
         else:
-            context = "No agents currently in simulation"
+            context = "No agent data available yet. The simulation may not have started or no data has been logged."
+            print("[CHAT] No agents found in stored data")
         
         # Get recent conversation history
+        print("[CHAT] Fetching conversation history...")
         conversation = get_conversation_history(limit=10)
+        print(f"[CHAT] Retrieved {len(conversation)} conversation messages")
         
         conversation_text = "\nRecent Conversation:\n"
         for msg in conversation[:5]:  # Last 5 messages
@@ -577,6 +618,7 @@ async def handle_general_chat(message: str):
             text = msg.get('text', '')
             conversation_text += f"{role}: {text}\n"
         
+        print("[CHAT] Building prompt...")
         prompt = f"""Current Simulation State:
 {context}
 
@@ -588,19 +630,27 @@ You are an assistant helping monitor a multi-agent simulation. The agents are tr
 
 Provide a helpful, concise response based on the current simulation state. If you need more specific data, suggest what command the user should run (like 'status', 'report', or 'agents')."""
         
-        # Call Ollama with timeout
-        try:
-            response = ollama_client.chat(
-                model=LLM_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                options={"timeout": 30}
-            )
-            
-            llm_response = response['message']['content']
-            
-        except Exception as e:
-            print(f"[LLM ERROR] {e}")
-            return {"response": f"❌ LLM connection error: {str(e)}. Is Ollama running on localhost:11434?"}
+        print(f"[CHAT] Prompt built: {len(prompt)} characters")
+        print(f"[CHAT] First 200 chars of prompt: {prompt[:200]}...")
+        
+        # Call Ollama with retry logic
+        print(f"[CHAT] Calling Ollama with model: {LLM_MODEL}")
+        print(f"[CHAT] Ollama host: {llm_config.OLLAMA_HOST}")
+        
+        response = chat_with_retry(
+            ollama_client,
+            LLM_MODEL,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        if response is None:
+            print("[CHAT] ERROR: chat_with_retry returned None")
+            return {"response": "❌ LLM connection error. Is Ollama running? Check: ./launch_ollama.sh"}
+        
+        print("[CHAT] Received response from Ollama")
+        llm_response = response['message']['content']
+        print(f"[CHAT] Response length: {len(llm_response)} characters")
+        print(f"[CHAT] First 100 chars: {llm_response[:100]}...")
         
         # Log assistant response
         add_log(llm_response, {
@@ -609,12 +659,19 @@ Provide a helpful, concise response based on the current simulation state. If yo
             "timestamp": datetime.now().isoformat()
         })
         
+        print(f"[CHAT] Returning response to client")
+        print(f"{'='*60}\n")
         return {"response": llm_response}
         
     except Exception as e:
-        print(f"[CHAT ERROR] {e}")
+        print(f"\n{'='*60}")
+        print(f"[CHAT ERROR] Exception in handle_general_chat()")
+        print(f"[CHAT ERROR] Exception type: {type(e).__name__}")
+        print(f"[CHAT ERROR] Exception message: {str(e)}")
+        print(f"{'='*60}")
         import traceback
         traceback.print_exc()
+        print(f"{'='*60}\n")
         return {"response": f"❌ Error in conversation: {str(e)}"}
 
 

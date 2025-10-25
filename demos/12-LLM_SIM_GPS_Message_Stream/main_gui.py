@@ -6,6 +6,7 @@ Runs the agent simulation with visualization - NO API SERVER
 import datetime
 import matplotlib
 matplotlib.use('Qt5Agg')
+import requests
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -27,12 +28,14 @@ print("[IMPORT] Starting imports...")
 
 from sim_helper_funcs import (
     is_jammed, linear_path, limit_movement, 
-    algorithm_make_move, llm_make_move,
+    algorithm_make_move,  # <-- llm_make_move removed
     log_batch_of_data, get_last_safe_position,
     convert_numpy_coords
 )
 
-from llm_config import get_ollama_client, get_model_name
+# ADD THIS NEW IMPORT:
+import requests  # For MCP API calls
+from typing import Optional
 
 try:
     from gps_client_lib import GPSData, AgentGPSManager, parse_nmea_gga
@@ -85,13 +88,6 @@ print("[IMPORT] All imports completed")
 # =============================================================================
 # SIMULATION CONFIGURATION
 # =============================================================================
-
-USE_LLM = False
-if USE_LLM:
-    ollama = get_ollama_client()
-    LLM_MODEL = get_model_name()
-    MAX_CHARS_PER_AGENT = 25
-    MAX_RETRIES = 3
 
 # Simulation parameters
 update_freq = 2.5
@@ -484,6 +480,87 @@ class GPSSimulationGUI(QMainWindow):
         except Exception as e:
             print(f"[GPS] Error logging GPS metrics: {e}")
 
+
+    def request_llm_recovery_position(self, agent_id: str, current_position: tuple) -> Optional[tuple]:
+        """
+        Request recovery position from LLM via MCP API
+        
+        Args:
+            agent_id: Agent identifier
+            current_position: Current (x, y) position
+        
+        Returns:
+            Suggested (x, y) position or None if request fails
+        """
+        try:
+            # Build command for LLM
+            command = (
+                f"Agent {agent_id} is jammed at position ({current_position[0]:.2f}, {current_position[1]:.2f}). "
+                f"Suggest a safe recovery position within {max_movement_per_step:.2f} units that avoids jamming zones. "
+                f"Respond with coordinates in format: move to X, Y"
+            )
+            
+            print(f"[MCP] Requesting LLM recovery for {agent_id}...")
+            
+            # Make HTTP request to MCP chatapp
+            response = requests.post(
+                "http://localhost:5000/chat",
+                json={"message": command},
+                timeout=10.0
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                response_text = data.get('response', '')
+                
+                print(f"[MCP] LLM response: {response_text[:100]}...")
+                
+                # Parse coordinates from response
+                # Look for patterns like "move to 5, 5" or "(5, 5)" or "x=5, y=5"
+                import re
+                
+                # Try different coordinate patterns
+                patterns = [
+                    r'move to\s+(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)',  # "move to X, Y"
+                    r'\((-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\)',        # "(X, Y)"
+                    r'x\s*=\s*(-?\d+\.?\d*)\s*,\s*y\s*=\s*(-?\d+\.?\d*)',  # "x=X, y=Y"
+                    r'position\s+(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)',  # "position X, Y"
+                ]
+                
+                coords = None
+                for pattern in patterns:
+                    match = re.search(pattern, response_text, re.IGNORECASE)
+                    if match:
+                        coords = match.groups()
+                        break
+                
+                if coords:
+                    x, y = float(coords[0]), float(coords[1])
+                    
+                    # Validate coordinates are within bounds
+                    if x_range[0] <= x <= x_range[1] and y_range[0] <= y <= y_range[1]:
+                        print(f"[MCP] ✓ LLM suggested position: ({x:.2f}, {y:.2f})")
+                        return (x, y)
+                    else:
+                        print(f"[MCP] ✗ LLM suggested out-of-bounds position: ({x:.2f}, {y:.2f})")
+                        return None
+                else:
+                    print(f"[MCP] ✗ Could not parse coordinates from LLM response")
+                    return None
+            else:
+                print(f"[MCP] ✗ HTTP error {response.status_code}")
+                return None
+            
+        except requests.exceptions.Timeout:
+            print(f"[MCP] ✗ Request timeout - LLM taking too long")
+            return None
+        except requests.exceptions.ConnectionError:
+            print(f"[MCP] ✗ Connection error - is MCP chatapp running?")
+            return None
+        except Exception as e:
+            print(f"[MCP] ✗ Error requesting LLM help: {e}")
+            return None
+
     def update_swarm_data(self):
         """Update simulation state"""
         if not self.animation_running:
@@ -555,77 +632,91 @@ class GPSSimulationGUI(QMainWindow):
                 if GPS_ENABLED:
                     self.update_agent_gps_data(agent_id, last_position)
             
-            # Movement logic
+            # ===================================================================
+            # MOVEMENT LOGIC - NEW VERSION WITHOUT DIRECT LLM CALLS
+            # ===================================================================
             if not self.agent_paths[agent_id] or len(self.agent_paths[agent_id]) == 0:
                 if self.jammed_positions[agent_id]:
-                    # Jamming recovery behavior
-                    if USE_LLM:
-                        # LLM requests new position through MCP
-                        print(f"[LLM] {agent_id} requesting recovery position from LLM via MCP")
+                    # ===== JAMMING RECOVERY BEHAVIOR =====
+                    print(f"[RECOVERY] {agent_id} attempting recovery from jamming")
+                    
+                    # Try to get LLM suggestion via MCP API
+                    llm_position = self.request_llm_recovery_position(agent_id, last_position)
+                    
+                    if llm_position:
+                        # Use LLM-suggested position
+                        next_pos = llm_position
+                        print(f"[RECOVERY] {agent_id} using LLM-suggested position ({next_pos[0]:.2f}, {next_pos[1]:.2f})")
                         
-                        # Log LLM request to PostgreSQL
+                        # Log LLM recovery to PostgreSQL
                         if RAG_ENABLED:
                             add_log(
-                                f"Agent {agent_id} requesting recovery position from LLM",
+                                f"Agent {agent_id} using LLM recovery position ({next_pos[0]:.2f}, {next_pos[1]:.2f})",
                                 {
                                     'timestamp': datetime.datetime.now().isoformat(),
                                     'source': agent_id,
-                                    'message_type': 'command',
-                                    'position': last_position,
+                                    'message_type': 'notification',
+                                    'position': next_pos,
                                     'jammed': True,
+                                    'recovery_method': 'llm',
                                     'role': 'agent'
                                 }
                             )
-                        
-                        next_pos = llm_make_move(
-                            agent_id, self.swarm_pos_dict, num_history_segments,
-                            ollama, LLM_MODEL, MAX_CHARS_PER_AGENT, MAX_RETRIES,
-                            jamming_center, jamming_radius, max_movement_per_step,
-                            x_range, y_range
+                    else:
+                        # Fallback to algorithm-based recovery
+                        next_pos = algorithm_make_move(
+                            agent_id, 
+                            last_position, 
+                            self.get_nearest_jamming_center(last_position), 
+                            self.get_nearest_jamming_radius(last_position),
+                            max_movement_per_step, 
+                            x_range, 
+                            y_range
                         )
+                        print(f"[RECOVERY] {agent_id} using algorithm recovery ({next_pos[0]:.2f}, {next_pos[1]:.2f})")
                         
-                        # Log LLM response to PostgreSQL
+                        # Log algorithm recovery to PostgreSQL
                         if RAG_ENABLED:
                             add_log(
-                                f"LLM provided recovery position ({next_pos[0]:.2f}, {next_pos[1]:.2f}) for {agent_id}",
+                                f"Agent {agent_id} using algorithm recovery position ({next_pos[0]:.2f}, {next_pos[1]:.2f})",
                                 {
                                     'timestamp': datetime.datetime.now().isoformat(),
-                                    'source': 'llm',
-                                    'message_type': 'response',
-                                    'target_agent': agent_id,
+                                    'source': agent_id,
+                                    'message_type': 'notification',
                                     'position': next_pos,
-                                    'role': 'system'
+                                    'jammed': True,
+                                    'recovery_method': 'algorithm',
+                                    'role': 'agent'
                                 }
                             )
-                    else:
-                        # Algorithm-based recovery
-                        next_pos = algorithm_make_move(
-                            agent_id, last_position, self.get_nearest_jamming_center(last_position), 
-                            self.get_nearest_jamming_radius(last_position),
-                            max_movement_per_step, x_range, y_range
-                        )
                     
+                    # Create path to recovery position
                     self.agent_paths[agent_id] = linear_path(
                         last_position, next_pos, max_movement_per_step
                     )
                 
                 else:
-                    # NORMAL BEHAVIOR: Move toward mission endpoint
+                    # ===== NORMAL BEHAVIOR: Move toward mission endpoint =====
                     target = mission_end
                     
-                    # Only create new path if we don't have one or are close to current target
+                    # Calculate distance to target
                     dist_to_target = math.sqrt(
                         (last_position[0] - target[0])**2 + 
                         (last_position[1] - target[1])**2
                     )
                     
+                    # Only create new path if we're not already at the target
                     if dist_to_target > max_movement_per_step:
                         self.agent_paths[agent_id] = linear_path(
                             last_position, target, max_movement_per_step
                         )
-                        print(f"[MOVEMENT] {agent_id} moving toward mission endpoint {target}")
+                        # Only print occasionally to reduce spam
+                        if self.iteration_count % 10 == 0:
+                            print(f"[MOVEMENT] {agent_id} moving toward mission endpoint {target}")
 
-            # Execute movement
+            # ===================================================================
+            # EXECUTE MOVEMENT
+            # ===================================================================
             if self.agent_paths[agent_id] and len(self.agent_paths[agent_id]) > 0:
                 next_pos = self.agent_paths[agent_id].pop(0)
                 limited_pos = limit_movement(last_position, next_pos, max_movement_per_step)
@@ -636,6 +727,7 @@ class GPSSimulationGUI(QMainWindow):
                     low_comm_qual if self.jammed_positions[agent_id] else high_comm_qual
                 ])
                 
+                # Update last safe position if not jammed
                 if not self.jammed_positions[agent_id]:
                     self.last_safe_position[agent_id] = limited_pos
             

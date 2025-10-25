@@ -1,5 +1,5 @@
 /**
- * logs.js - Log Display Management
+ * logs.js - Log Display Management (FIXED - handles null GPS values)
  * Handles creation and display of log messages
  */
 
@@ -24,17 +24,17 @@ const LogManager = {
         if (role === 'assistant' || role === 'ollama') div.classList.add('ollama-log');
         if (role === 'system') div.classList.add('system-log');
 
-        // Build GPS info if available
+        // Build GPS info if available - WITH NULL CHECKS
         let gpsInfo = '';
         if (metadata.gps_fix_quality !== undefined || metadata.gps_satellites !== undefined) {
             gpsInfo = '<div class="gps-info">';
-            if (metadata.gps_fix_quality !== undefined) {
+            if (metadata.gps_fix_quality !== undefined && metadata.gps_fix_quality !== null) {
                 gpsInfo += `<span class="gps-metric">Fix Quality: ${metadata.gps_fix_quality}</span>`;
             }
-            if (metadata.gps_satellites !== undefined) {
+            if (metadata.gps_satellites !== undefined && metadata.gps_satellites !== null) {
                 gpsInfo += `<span class="gps-metric">Satellites: ${metadata.gps_satellites}</span>`;
             }
-            if (metadata.gps_signal_quality !== undefined) {
+            if (metadata.gps_signal_quality !== undefined && metadata.gps_signal_quality !== null) {
                 gpsInfo += `<span class="gps-metric">Signal: ${metadata.gps_signal_quality.toFixed(1)} dB-Hz</span>`;
             }
             gpsInfo += '</div>';
@@ -50,7 +50,7 @@ const LogManager = {
             const jammedText = metadata.jammed ? '🚫 Jammed' : '✅ Clear';
             metaHtml += `<span class="log-status ${jammedClass}">${jammedText}</span>`;
         }
-        if (metadata.communication_quality !== undefined) {
+        if (metadata.communication_quality !== undefined && metadata.communication_quality !== null) {
             const commQuality = (metadata.communication_quality * 100).toFixed(0);
             metaHtml += `<span class="log-quality">📡 Comm: ${commQuality}%</span>`;
         }
