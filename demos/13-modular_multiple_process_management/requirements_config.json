@@ -1,0 +1,40 @@
+{
+  "Core GPS Metrics": {
+    "Fix Quality": {
+      "Fix Quality Level": {
+        "name": "Fix Quality",
+        "threshold": 1,
+        "warning_threshold": 2,
+        "unit": "quality_level",
+        "current_value": 3,
+        "description": "0=No Fix, 1=GPS, 2=DGPS, 3=RTK"
+      },
+      "Satellite Count": {
+        "name": "Active Satellites",
+        "threshold": 4,
+        "warning_threshold": 6,
+        "unit": "satellites",
+        "current_value": 8,
+        "description": "Number of satellites in solution"
+      }
+    },
+    "Signal Quality": {
+      "Signal Strength": {
+        "name": "Signal Quality",
+        "threshold": 30,
+        "warning_threshold": 35,
+        "unit": "dB-Hz",
+        "current_value": 45,
+        "description": "Average C/N0 signal strength"
+      },
+      "Jamming Level": {
+        "name": "Jamming Indicator",
+        "threshold": 70,
+        "warning_threshold": 50,
+        "unit": "percent",
+        "current_value": 0,
+        "description": "Estimated jamming intensity"
+      }
+    }
+  }
+}

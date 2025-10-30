@@ -1,0 +1,132 @@
+/* Log Messages */
+.log-message {
+    background: white;
+    border-radius: 8px;
+    padding: 0.75rem;
+    margin-bottom: 0.6rem;
+    box-shadow: var(--shadow-sm);
+    border-left: 4px solid var(--primary-blue);
+    transition: all 0.2s ease;
+    animation: slideIn 0.3s ease-out;
+}
+
+.log-message:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateX(4px);
+}
+
+/* Log Role Styling */
+.log-message.user-log {
+    border-left-color: var(--primary-blue);
+}
+
+.log-message.ollama-log,
+.log-message.assistant-log {
+    border-left-color: var(--success-green);
+}
+
+.log-message.system-log {
+    border-left-color: var(--text-secondary);
+}
+
+/* Log Header */
+.log-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.log-header strong {
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.log-time {
+    color: var(--text-secondary);
+    font-size: 0.7rem;
+}
+
+/* Log Body */
+.log-body {
+    color: var(--text-primary);
+    line-height: 1.5;
+    margin-bottom: 0.5rem;
+    word-wrap: break-word;
+    font-size: 0.85rem;
+}
+
+/* GPS Info */
+.gps-info {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 0.5rem 0;
+    padding: 0.5rem;
+    background: linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%);
+    border-radius: 6px;
+    border-left: 3px solid var(--primary-blue);
+}
+
+.gps-metric {
+    background: white;
+    color: var(--primary-blue-dark);
+    padding: 0.2rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    box-shadow: var(--shadow-sm);
+}
+
+/* Log Meta Information */
+.log-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    font-size: 0.75rem;
+}
+
+.log-meta span {
+    padding: 0.2rem 0.5rem;
+    border-radius: 12px;
+    font-weight: 500;
+}
+
+/* Status Badge */
+.log-status {
+    font-weight: 600;
+}
+
+.log-status.jammed {
+    background: #FFEBEE;
+    color: var(--danger-red);
+}
+
+.log-status.clear {
+    background: #E8F5E9;
+    color: var(--success-green);
+}
+
+/* Quality Badge */
+.log-quality {
+    background: #E3F2FD;
+    color: var(--primary-blue);
+}
+
+/* Position Badge */
+.log-position {
+    background: #FFF3E0;
+    color: var(--warning-orange);
+}
+
+/* Log ID Badge */
+.log-id {
+    background: #F3E5F5;
+    color: #7B1FA2;
+    font-family: 'Courier New', monospace;
+    font-size: 0.65rem;
+}

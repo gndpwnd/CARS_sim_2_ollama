@@ -18,7 +18,7 @@ python main_gui.py
 
 
 
-dev@DB-78GB094:~/CARS_sim_2_ollama/demos/12-LLM_SIM_GPS_Message_Stream$ tree -I "__pycache__" -I "docs" -I "docs_old"
+dev@DB-78GB094:~/CARS_sim_2_ollama/demos/12-LLM_SIM_GPS_Message_Stream$ tree -I "__pycache__" -I "docs" -I "docs_old" -I "pgdata" -I "qdrant_data"
 .
 ├── Readme.md
 ├── constellation_config.json
