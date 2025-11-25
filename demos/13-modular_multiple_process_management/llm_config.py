@@ -9,7 +9,7 @@ from typing import Optional, Tuple
 
 # Ollama configuration - connects through SSH tunnel
 OLLAMA_HOST = "http://localhost:11434"  # Local end of SSH tunnel
-LLM_MODEL = "llama3:8b"
+LLM_MODEL = "llama3.3:70b-instruct-q5_K_M"
 CONNECTION_TIMEOUT = 30  # Increased for model loading
 MAX_RETRIES = 3
 

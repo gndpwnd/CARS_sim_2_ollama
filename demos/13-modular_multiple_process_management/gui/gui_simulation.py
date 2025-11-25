@@ -10,7 +10,7 @@ from simulation import (
 from integrations import (
     request_llm_recovery_position, log_event, log_telemetry_to_qdrant
 )
-from core.config import MISSION_END, MAX_MOVEMENT_PER_STEP, LOW_COMM_QUAL, HIGH_COMM_QUAL
+from core.config import MISSION_END, MAX_MOVEMENT_PER_STEP, LOW_COMM_QUAL, HIGH_COMM_QUAL, SIMULATION_API_URL
 
 class SimulationUpdater:
     """Handles simulation state updates"""
@@ -29,15 +29,90 @@ class SimulationUpdater:
         if not self.parent.animation_running:
             return
         
+        # Check for LLM-commanded targets
+        llm_targets = {}
+        try:
+            import requests
+            response = requests.get(f"{SIMULATION_API_URL}/llm_targets", timeout=1.0)
+            if response.status_code == 200:
+                llm_targets = response.json().get('targets', {})
+        except:
+            pass
+        
         self.parent.iteration_count += 1
         
         for agent_id in self.parent.swarm_pos_dict:
-            self._update_agent(agent_id)
+            # LLM TARGET HAS HIGHEST PRIORITY
+            if agent_id in llm_targets:
+                self._handle_llm_target(agent_id, llm_targets[agent_id])
+            else:
+                self._update_agent(agent_id)
         
         # Update plot and status
         self.parent.plot_manager.update_plot()
         self.parent.status_label.setText(f"Iteration: {self.parent.iteration_count}")
     
+    def _handle_llm_target(self, agent_id, llm_target):
+        """Handle LLM-commanded target movement (highest priority)"""
+        current_pos = self.parent.swarm_pos_dict[agent_id][-1][:2]
+        is_jammed = check_multiple_zones(current_pos, self.parent.jamming_zones)
+        
+        print(f"[GUI] {agent_id} following LLM command to {llm_target}")
+        
+        # Set as target
+        self.parent.agent_targets[agent_id] = tuple(llm_target)
+        
+        # Check if reached target
+        distance = ((current_pos[0] - llm_target[0])**2 + 
+                   (current_pos[1] - llm_target[1])**2)**0.5
+        
+        if distance < 0.5:
+            # Reached target - clear it
+            print(f"[GUI] {agent_id} reached LLM target!")
+            self._clear_llm_target(agent_id)
+            self.parent.agent_targets[agent_id] = None
+            # Continue with normal update
+            self._update_agent(agent_id)
+        else:
+            # Move toward LLM target (even if jammed - LLM has authority)
+            next_pos = limit_movement(current_pos, llm_target, MAX_MOVEMENT_PER_STEP)
+            
+            # Update agent position
+            comm_quality = LOW_COMM_QUAL if is_jammed else HIGH_COMM_QUAL
+            self.parent.swarm_pos_dict[agent_id].append([
+                next_pos[0],
+                next_pos[1],
+                comm_quality
+            ])
+            
+            # Log telemetry
+            log_telemetry_to_qdrant(
+                agent_id=agent_id,
+                position=next_pos,
+                is_jammed=is_jammed,
+                comm_quality=comm_quality,
+                iteration=self.parent.iteration_count
+            )
+            
+            # Update GPS data
+            if self.parent.subsystem_manager.gps_manager:
+                self.parent.subsystem_manager.update_agent_gps(
+                    agent_id, next_pos, is_jammed
+                )
+    
+    def _clear_llm_target(self, agent_id):
+        """Clear LLM target via API"""
+        try:
+            import requests
+            response = requests.delete(
+                f"{SIMULATION_API_URL}/llm_targets/{agent_id}",
+                timeout=2.0
+            )
+            if response.status_code == 200:
+                print(f"[GUI] Cleared LLM target for {agent_id}")
+        except Exception as e:
+            print(f"[GUI] Error clearing LLM target: {e}")
+
     def _update_agent(self, agent_id):
         """Update a single agent"""
         last_position = self.parent.swarm_pos_dict[agent_id][-1][:2]

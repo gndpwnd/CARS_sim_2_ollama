@@ -1,0 +1,3 @@
+I have a following project to demonstrate the user of an LLM to help a human user interpret situational awareness through reducing alert fatigue and helping to micromanage a complex system.
+
+The following code demonstrates the ability to have an LLM control the movements of agents using an MCP and i want you to see how it works. Wait for me to upload my complex gps system. I want to implement the ability for the LLM to move agents by the same methods seen in this demo. If you could please help me update or add tools to my mcp to allow the LLM to move agents in my complex gps system that would be great. Please wait for me to upload my complex gps system before proceeding.

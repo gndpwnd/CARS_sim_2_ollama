@@ -2,6 +2,8 @@
 """
 Qdrant Store - NMEA Messages and Agent Telemetry
 Handles all non-relational time-series data (NMEA, positions, GPS metrics)
+
+FIXED: Timestamp sorting to handle mixed string/float types
 """
 
 from qdrant_client import QdrantClient
@@ -64,6 +66,33 @@ def init_qdrant(retries=5, delay=2):
     return False
 
 
+def _normalize_timestamp(ts: Any) -> str:
+    """
+    Normalize timestamp to ISO format string.
+    Handles mixed types (str, float, int, datetime).
+    
+    Args:
+        ts: Timestamp in any format
+    
+    Returns:
+        ISO format string
+    """
+    if isinstance(ts, str):
+        # Already a string, ensure it's not empty
+        return ts if ts else datetime.now().isoformat()
+    elif isinstance(ts, (int, float)):
+        # Unix timestamp
+        try:
+            return datetime.fromtimestamp(ts).isoformat()
+        except:
+            return datetime.now().isoformat()
+    elif isinstance(ts, datetime):
+        return ts.isoformat()
+    else:
+        # Unknown type, use current time
+        return datetime.now().isoformat()
+
+
 def add_nmea_message(agent_id: str, nmea_sentence: str, metadata: Dict[str, Any]) -> Optional[str]:
     """
     Add a single NMEA message to Qdrant
@@ -90,13 +119,16 @@ def add_nmea_message(agent_id: str, nmea_sentence: str, metadata: Dict[str, Any]
         # Create point ID
         point_id = str(uuid.uuid4())
         
+        # Normalize timestamp
+        timestamp = _normalize_timestamp(metadata.get('timestamp', datetime.now()))
+        
         # Prepare payload
         payload = {
             "agent_id": agent_id,
             "nmea_sentence": nmea_sentence,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": timestamp,  # Always string
             "text": text,
-            **metadata  # Include all additional metadata
+            **{k: v for k, v in metadata.items() if k != 'timestamp'}  # Exclude old timestamp
         }
         
         # Insert into Qdrant
@@ -147,14 +179,17 @@ def add_telemetry(agent_id: str, position: tuple, metadata: Dict[str, Any]) -> O
         # Create point ID
         point_id = str(uuid.uuid4())
         
+        # Normalize timestamp
+        timestamp = _normalize_timestamp(metadata.get('timestamp', datetime.now()))
+        
         # Prepare payload
         payload = {
             "agent_id": agent_id,
             "position_x": float(position[0]),
             "position_y": float(position[1]),
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": timestamp,  # Always string
             "text": text,
-            **metadata
+            **{k: v for k, v in metadata.items() if k != 'timestamp'}  # Exclude old timestamp
         }
         
         # Insert into Qdrant
@@ -201,36 +236,52 @@ def get_agent_position_history(agent_id: str, limit: int = 5) -> List[Dict[str, 
                     }
                 ]
             },
-            limit=limit * 2,  # Get more to ensure we have enough after sorting
+            limit=limit * 3,  # Get more to ensure we have enough after sorting
             with_payload=True,
             with_vectors=False
         )[0]
         
-        # Sort by timestamp (newest first)
-        sorted_results = sorted(
-            results,
-            key=lambda x: x.payload.get('timestamp', ''),
-            reverse=True
-        )[:limit]
+        # FIXED: Normalize all timestamps before sorting
+        for point in results:
+            if 'timestamp' in point.payload:
+                point.payload['timestamp'] = _normalize_timestamp(point.payload['timestamp'])
+        
+        # Sort by timestamp (newest first) - now all strings
+        try:
+            sorted_results = sorted(
+                results,
+                key=lambda x: x.payload.get('timestamp', ''),
+                reverse=True
+            )[:limit]
+        except Exception as sort_error:
+            print(f"[QDRANT] Warning: Could not sort by timestamp: {sort_error}")
+            # Fallback: just take first N results
+            sorted_results = results[:limit]
         
         # Extract position data
         positions = []
         for point in sorted_results:
             payload = point.payload
             # Convert position coordinates to float
-            x = float(payload.get('position_x', 0))
-            y = float(payload.get('position_y', 0))
-            positions.append({
-                'position': (x, y),
-                'jammed': bool(payload.get('jammed', False)),
-                'communication_quality': float(payload.get('communication_quality', 0)),
-                'timestamp': str(payload.get('timestamp', ''))
-            })
+            try:
+                x = float(payload.get('position_x', 0))
+                y = float(payload.get('position_y', 0))
+                positions.append({
+                    'position': (x, y),
+                    'jammed': bool(payload.get('jammed', False)),
+                    'communication_quality': float(payload.get('communication_quality', 0)),
+                    'timestamp': str(payload.get('timestamp', ''))
+                })
+            except (ValueError, TypeError) as e:
+                print(f"[QDRANT] Warning: Could not parse position data: {e}")
+                continue
         
         return positions
         
     except Exception as e:
         print(f"[QDRANT] Error retrieving position history: {e}")
+        import traceback
+        traceback.print_exc()
         return []
 
 
@@ -269,12 +320,20 @@ def get_nmea_messages(agent_id: Optional[str] = None, limit: int = 50) -> List[D
             with_vectors=False
         )[0]
         
+        # Normalize timestamps
+        for point in results:
+            if 'timestamp' in point.payload:
+                point.payload['timestamp'] = _normalize_timestamp(point.payload['timestamp'])
+        
         # Sort by timestamp
-        sorted_results = sorted(
-            results,
-            key=lambda x: x.payload.get('timestamp', ''),
-            reverse=True
-        )
+        try:
+            sorted_results = sorted(
+                results,
+                key=lambda x: x.payload.get('timestamp', ''),
+                reverse=True
+            )
+        except:
+            sorted_results = results
         
         return [point.payload for point in sorted_results]
         
