@@ -1,6 +1,6 @@
 """
 Enhanced command parsing and handling for MCP chatapp.
-Improved LLM prompting to avoid getting stuck on reports.
+Fixed duplicate message logging.
 """
 import httpx
 import json
@@ -42,12 +42,13 @@ async def handle_chat_message(message: str):
     Returns:
         Response dictionary
     """
-    # Log user message
+    # Log user message ONCE at the entry point
     timestamp = datetime.now().isoformat()
     add_log(message, {
         "source": "user",
         "message_type": "command",
-        "timestamp": timestamp
+        "timestamp": timestamp,
+        "role": "user"  # Add role for clarity
     })
     
     # Handle special commands (quick responses without LLM)
@@ -127,6 +128,8 @@ def classify_message_intent(message: str) -> str:
 
 async def handle_movement_command(command: str):
     """Handle single agent movement commands with improved LLM parsing"""
+    # NOTE: Do NOT log here - already logged in handle_chat_message
+    
     if not LLM_AVAILABLE:
         return {"response": "⚠️ LLM not available for command parsing"}
     
@@ -238,6 +241,8 @@ async def handle_multiple_movement_commands(command: str):
     Handle commands that move multiple agents at once.
     Example: "move agent1 to 5,5 and agent2 to -3,7"
     """
+    # NOTE: Do NOT log here - already logged in handle_chat_message
+    
     if not LLM_AVAILABLE:
         return {"response": "⚠️ LLM not available"}
     
@@ -319,6 +324,8 @@ async def handle_general_chat(message: str):
     """
     Handle general conversation with IMPROVED prompting to avoid report loops.
     """
+    # NOTE: Do NOT log here - already logged in handle_chat_message
+    
     if not LLM_AVAILABLE or not RAG_AVAILABLE:
         return {"response": "❌ LLM or RAG not available"}
     
@@ -383,11 +390,12 @@ YOUR RESPONSE (be direct and conversational):"""
         
         llm_response = response['message']['content']
         
-        # Log response
+        # Log LLM response (but NOT the user message again)
         add_log(llm_response, {
             "source": "llm",
             "message_type": "response",
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "role": "assistant"
         })
         
         print(f"[CHAT] Response generated ({len(llm_response)} chars)")

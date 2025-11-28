@@ -22,6 +22,16 @@ from gui import (
     SubsystemManager, SimulationUpdater
 )
 
+# ADD THESE LINES FOR SATELLITE SUPPORT
+try:
+    from satellite_orbital_model import SatelliteConstellation
+    from integrations.satellite_integration import initialize_satellites
+    SATELLITES_AVAILABLE = True
+    print("[IMPORT] Satellite modules loaded successfully")
+except ImportError as e:
+    print(f"[IMPORT] Satellites not available: {e}")
+    SATELLITES_AVAILABLE = False
+
 print("[IMPORT] All imports completed")
 
 class GPSSimulationGUI(QMainWindow):
@@ -33,6 +43,9 @@ class GPSSimulationGUI(QMainWindow):
         
         # Initialize state from simulation module
         self._initialize_state()
+        
+        # ADD THIS LINE: Initialize satellite constellation
+        self._initialize_satellites()
         
         # Create managers
         self.plot_manager = PlotManager(self)
@@ -77,6 +90,8 @@ class GPSSimulationGUI(QMainWindow):
         self.plot_manager.update_plot()
         
         print("[GUI] Initialization complete!")
+        if SATELLITES_AVAILABLE and hasattr(self, 'satellite_constellation') and self.satellite_constellation:
+            print(f"[GUI] ✓ Satellite visualization ENABLED ({len(self.satellite_constellation.satellites)} satellites)")
     
     def _initialize_state(self):
         """Initialize simulation state"""
@@ -114,6 +129,39 @@ class GPSSimulationGUI(QMainWindow):
         
         print(f"[INIT] Initialized {NUM_AGENTS} agents")
     
+    # ADD THIS NEW METHOD FOR SATELLITE INITIALIZATION
+    def _initialize_satellites(self):
+        """Initialize satellite constellation"""
+        self.satellite_constellation = None
+        
+        if not SATELLITES_AVAILABLE:
+            print("[SAT] Satellite modules not available, skipping initialization")
+            return
+        
+        try:
+            # Fixed orbit radius of 8 units as specified
+            orbit_radius = 8.0
+            
+            print(f"[SAT] Initializing satellites with orbit radius: {orbit_radius}")
+            self.satellite_constellation = initialize_satellites(
+                config_file="constellation_config.json",
+                orbit_radius=orbit_radius
+            )
+            
+            if self.satellite_constellation:
+                num_sats = len(self.satellite_constellation.satellites)
+                print(f"[SAT] ✓ Successfully initialized {num_sats} satellites")
+                print(f"[SAT]   - Orbit radius: {orbit_radius} units")
+                print(f"[SAT]   - Satellites will orbit clockwise or counterclockwise")
+            else:
+                print("[SAT] ✗ Failed to initialize satellites")
+                
+        except Exception as e:
+            print(f"[SAT] ✗ Error initializing satellites: {e}")
+            import traceback
+            traceback.print_exc()
+            self.satellite_constellation = None
+    
     def _initialize_gps_for_agents(self):
         """Initialize GPS data AFTER GUI is visible"""
         if not self.subsystem_manager.gps_manager:
@@ -146,7 +194,7 @@ class GPSSimulationGUI(QMainWindow):
 def main():
     """Main entry point"""
     print("="*60)
-    print("MULTI-AGENT GPS SIMULATION - GUI")
+    print("MULTI-AGENT GPS SIMULATION - GUI WITH SATELLITES")
     print("="*60)
     
     try:
@@ -162,6 +210,8 @@ def main():
         window.activateWindow()
         
         print("[SIM] GUI window should be visible now - simulation running...")
+        if SATELLITES_AVAILABLE:
+            print("[SIM] ✓ Satellite visualization active")
         print("[SIM] Running event loop...")
         
         sys.exit(app.exec_())

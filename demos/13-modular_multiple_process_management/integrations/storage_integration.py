@@ -27,6 +27,7 @@ except ImportError:
 def add_log(log_text: str, metadata: Dict[str, Any], log_id: Optional[str] = None):
     """
     Add log to PostgreSQL (wrapper with fallback).
+    Ensures all numpy types are converted before logging.
     
     Args:
         log_text: Log message text
@@ -34,7 +35,9 @@ def add_log(log_text: str, metadata: Dict[str, Any], log_id: Optional[str] = Non
         log_id: Optional log ID
     """
     if PG_ENABLED:
-        _pg_add_log(log_text, metadata, log_id)
+        # FIXED: Convert all numpy types in metadata before logging
+        clean_metadata = convert_numpy_coords(metadata)
+        _pg_add_log(log_text, clean_metadata, log_id)
 
 def log_batch_of_data(agent_histories: Dict, add_log_func, prefix: str = "batch"):
     """
@@ -59,9 +62,10 @@ def log_batch_of_data(agent_histories: Dict, add_log_func, prefix: str = "batch"
                 continue
             prev_entry = data
 
+            # FIXED: Convert numpy types
             position = convert_numpy_coords(data['position'])
-            comm_quality = convert_numpy_coords(data['communication_quality'])
-            jammed = data['jammed']
+            comm_quality = float(convert_numpy_coords(data['communication_quality']))
+            jammed = bool(data['jammed'])
             timestamp = datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ')
 
             # Determine message type based on status
@@ -98,17 +102,20 @@ def log_gps_to_qdrant(agent_id: str, gps_data, position: tuple, is_jammed: bool)
     if not QDRANT_ENABLED or not gps_data:
         return
     
+    # FIXED: Convert numpy types in position
+    clean_position = convert_numpy_coords(position)
+    
     # Log NMEA messages
     for nmea_sentence in gps_data.nmea_sentences:
         add_nmea_message(
             agent_id=agent_id,
             nmea_sentence=nmea_sentence,
             metadata={
-                'position': position,
-                'jammed': is_jammed,
-                'fix_quality': gps_data.fix_quality,
-                'satellites': gps_data.satellite_count,
-                'signal_quality': gps_data.signal_quality
+                'position': clean_position,
+                'jammed': bool(is_jammed),
+                'fix_quality': int(gps_data.fix_quality) if hasattr(gps_data.fix_quality, 'item') else gps_data.fix_quality,
+                'satellites': int(gps_data.satellite_count) if hasattr(gps_data.satellite_count, 'item') else gps_data.satellite_count,
+                'signal_quality': float(gps_data.signal_quality) if hasattr(gps_data.signal_quality, 'item') else gps_data.signal_quality
             }
         )
 
@@ -129,23 +136,26 @@ def log_telemetry_to_qdrant(agent_id: str, position: tuple,
     if not QDRANT_ENABLED:
         return
     
+    # FIXED: Convert numpy types
+    clean_position = convert_numpy_coords(position)
+    
     metadata = {
-        'jammed': is_jammed,
-        'communication_quality': comm_quality,
-        'iteration': iteration,
-        'timestamp': datetime.datetime.now().timestamp()
+        'jammed': bool(is_jammed),
+        'communication_quality': float(comm_quality),
+        'iteration': int(iteration),
+        'timestamp': float(datetime.datetime.now().timestamp())
     }
     
     if gps_data:
         metadata.update({
-            'gps_satellites': gps_data.satellite_count,
-            'gps_signal_quality': gps_data.signal_quality,
-            'gps_fix_quality': gps_data.fix_quality
+            'gps_satellites': int(gps_data.satellite_count) if hasattr(gps_data.satellite_count, 'item') else gps_data.satellite_count,
+            'gps_signal_quality': float(gps_data.signal_quality) if hasattr(gps_data.signal_quality, 'item') else gps_data.signal_quality,
+            'gps_fix_quality': int(gps_data.fix_quality) if hasattr(gps_data.fix_quality, 'item') else gps_data.fix_quality
         })
     
     add_telemetry(
         agent_id=agent_id,
-        position=position,
+        position=clean_position,
         metadata=metadata
     )
 
@@ -164,15 +174,20 @@ def log_event(event_type: str, agent_id: str, position: tuple,
     if not PG_ENABLED:
         return
     
+    # FIXED: Convert numpy types in position
+    clean_position = convert_numpy_coords(position)
+    
     metadata = {
         'timestamp': datetime.datetime.now().isoformat(),
         'source': agent_id,
         'message_type': event_type,
-        'position': position,
+        'position': clean_position,
         'role': 'agent'
     }
     
     if additional_metadata:
-        metadata.update(additional_metadata)
+        # FIXED: Convert numpy types in additional metadata
+        clean_additional = convert_numpy_coords(additional_metadata)
+        metadata.update(clean_additional)
     
     add_log(message, metadata)

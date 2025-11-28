@@ -1,5 +1,5 @@
 """
-GUI controls and button handlers.
+GUI controls and button handlers with Satellite Controls.
 """
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
@@ -21,7 +21,7 @@ class ControlPanel:
     
     def setup_ui(self):
         """Setup the main window UI"""
-        self.parent.setWindowTitle("Multi-Agent GPS Simulation")
+        self.parent.setWindowTitle("Multi-Agent GPS Simulation with Satellites")
         self.parent.setGeometry(100, 100, 1400, 900)
         
         central_widget = QWidget()
@@ -42,7 +42,7 @@ class ControlPanel:
     
     def _create_header(self):
         """Create header label"""
-        header = QLabel("Multi-Agent GPS Simulation - Algorithm Control")
+        header = QLabel("Multi-Agent GPS Simulation - Algorithm Control with Satellite Tracking")
         header.setStyleSheet("""
             QLabel {
                 font-size: 18px;
@@ -75,6 +75,10 @@ class ControlPanel:
         self.parent.clear_button = self._create_clear_button()
         button_layout.addWidget(self.parent.clear_button)
         
+        # Add satellite control buttons if satellites are available
+        if hasattr(self.parent, 'satellite_constellation') and self.parent.satellite_constellation:
+            self._add_satellite_buttons(button_layout)
+        
         button_layout.addStretch()
         
         # Status label
@@ -82,6 +86,62 @@ class ControlPanel:
         button_layout.addWidget(self.parent.status_label)
         
         return button_layout
+    
+    def _add_satellite_buttons(self, layout):
+        """Add satellite control buttons to layout"""
+        # Toggle satellites visibility
+        sat_button = QPushButton("Toggle Satellites")
+        sat_button.setStyleSheet("""
+            QPushButton {
+                background-color: #00BCD4;
+                color: white;
+                padding: 8px 16px;
+                font-size: 11px;
+                font-weight: bold;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #0097A7;
+            }
+        """)
+        sat_button.clicked.connect(self.parent.plot_manager.toggle_satellites)
+        layout.addWidget(sat_button)
+        
+        # Toggle orbit circle
+        orbit_button = QPushButton("Toggle Orbit")
+        orbit_button.setStyleSheet("""
+            QPushButton {
+                background-color: #673AB7;
+                color: white;
+                padding: 8px 16px;
+                font-size: 11px;
+                font-weight: bold;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #512DA8;
+            }
+        """)
+        orbit_button.clicked.connect(self.parent.plot_manager.toggle_orbit_circle)
+        layout.addWidget(orbit_button)
+        
+        # Toggle satellite labels
+        label_button = QPushButton("Toggle Sat Labels")
+        label_button.setStyleSheet("""
+            QPushButton {
+                background-color: #795548;
+                color: white;
+                padding: 8px 16px;
+                font-size: 11px;
+                font-weight: bold;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #5D4037;
+            }
+        """)
+        label_button.clicked.connect(self.parent.plot_manager.toggle_satellite_labels)
+        layout.addWidget(label_button)
     
     def _create_mode_button(self):
         """Create mode toggle button"""

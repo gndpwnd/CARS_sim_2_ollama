@@ -296,15 +296,33 @@ class SubsystemManager:
                     break
             
             if fix_info and fix_info['valid']:
+                # Safely parse coordinates with empty string handling
+                try:
+                    lat_str = fix_info.get('latitude', '0')
+                    lon_str = fix_info.get('longitude', '0')
+                    
+                    # Skip if empty strings
+                    if not lat_str or not lon_str or lat_str == '' or lon_str == '0':
+                        # Use simulation coordinates instead
+                        latitude = position[1] * 0.01  # Rough approximation
+                        longitude = position[0] * 0.01
+                    else:
+                        latitude = float(lat_str) * (1 if fix_info['lat_dir'] == 'N' else -1)
+                        longitude = float(lon_str) * (1 if fix_info['lon_dir'] == 'E' else -1)
+                except (ValueError, TypeError) as e:
+                    # Fallback to simulation coordinates
+                    latitude = position[1] * 0.01
+                    longitude = position[0] * 0.01
+                
                 fix = GPSFix(
-                    latitude=float(fix_info['latitude']) * (1 if fix_info['lat_dir'] == 'N' else -1),
-                    longitude=float(fix_info['longitude']) * (1 if fix_info['lon_dir'] == 'E' else -1),
-                    fix_quality=fix_info['fix_quality'],
-                    satellites_used=fix_info['satellites'],
+                    latitude=latitude,
+                    longitude=longitude,
+                    fix_quality=fix_info.get('fix_quality', 0),
+                    satellites_used=fix_info.get('satellites', 0),
                     speed_kmh=0.0,  # No speed info in GGA
                     valid=True,
-                    hdop=fix_info['hdop'],
-                    altitude=fix_info['altitude']
+                    hdop=fix_info.get('hdop', 99.9),
+                    altitude=fix_info.get('altitude', 0.0)
                 )
                 
                 # Update GPS-based requirements
@@ -314,8 +332,8 @@ class SubsystemManager:
                 satellites = []
                 base_snr = max(0, 45 - jamming_level / 2)  # SNR degrades with jamming
                 
-                for i in range(fix_info['satellites']):
-                    azimuth = i * (360 / fix_info['satellites'])
+                for i in range(fix_info.get('satellites', 0)):
+                    azimuth = i * (360 / max(1, fix_info.get('satellites', 1)))
                     elevation = 45 + 30 * ((i % 3) - 1)  # Spread between 15-75 degrees
                     # Add some variation to SNR
                     snr = base_snr + ((i % 5) - 2)  # +/- 2dB variation
@@ -326,21 +344,25 @@ class SubsystemManager:
                         elevation=elevation,
                         azimuth=azimuth,
                         snr=snr,
-                        used_in_solution=(i < fix_info['fix_quality'] * 4)  # Use more sats for better fix
+                        used_in_solution=(i < fix_info.get('fix_quality', 0) * 4)
                     ))
-                self.requirements_monitor.update_satellites(agent_id, satellites)
+                
+                if satellites:
+                    self.requirements_monitor.update_satellites(agent_id, satellites)
             
-            # Update environmental conditions
+            # Always update environmental conditions
             self.requirements_monitor.update_environmental_conditions(
-                vehicle_id=agent_id,  # Using vehicle_id instead of agent_id
+                vehicle_id=agent_id,
                 jamming_level=jamming_level,
                 gps_denied=is_jammed or jamming_level > 90
             )
             
         except Exception as e:
             print(f"[REQ] Error updating requirements for {agent_id}: {e}")
-            traceback.print_exc()
-    
+            # Don't print full traceback for empty coordinate strings - it's expected
+            if "could not convert string to float" not in str(e):
+                traceback.print_exc()
+
     def _log_gps_metrics(self, agent_id: str, gps_data: Any, position: tuple):
         """
         Log GPS metrics for monitoring and analysis

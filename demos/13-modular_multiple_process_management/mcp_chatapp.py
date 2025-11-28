@@ -164,8 +164,8 @@ async def chat(request: Request):
         
         if not health['llm'] == 'ready':
             return {"response": "❌ LLM not available. Is Ollama running?"}
-            
-        # Build request metadata
+        
+        # Build request metadata (but DON'T log the message - let handle_chat_message do it)
         metadata = {
             "timestamp": datetime.now().isoformat(),
             "request_id": data.get('request_id', ''),
@@ -174,13 +174,9 @@ async def chat(request: Request):
             "system_health": health
         }
         
-        # Log request with metadata
         print(f"[CHAT] Request metadata: {metadata}")
-        add_log(user_message, {
-            "source": "user",
-            "message_type": "request",
-            "metadata": metadata
-        })
+        
+        # NOTE: Removed duplicate logging here - handle_chat_message logs the user message
         
         # Get simulation status for context
         try:
@@ -192,7 +188,7 @@ async def chat(request: Request):
         except Exception as e:
             print(f"[CHAT] Could not get simulation status: {e}")
         
-        # Process command with enhanced context
+        # Process command (this will log the message internally)
         result = await handle_chat_message(user_message)
         
         print("[CHAT] Request completed")
@@ -207,7 +203,7 @@ async def chat(request: Request):
         traceback.print_exc()
         print("="*60 + "\n")
         return {"response": f"❌ {error}"}
-
+        
 # ============================================================================
 # STREAMING ENDPOINTS
 # ============================================================================
