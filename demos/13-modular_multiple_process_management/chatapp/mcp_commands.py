@@ -1,6 +1,6 @@
 """
-Enhanced command parsing and handling for MCP chatapp.
-Fixed duplicate message logging.
+Enhanced command parsing with IMPROVED RAG integration.
+FIXED: Better context assembly, no duplicate logging
 """
 import httpx
 import json
@@ -22,9 +22,9 @@ except ImportError:
     LLM_AVAILABLE = False
     print("[LLM] LLM not available")
 
-# Import RAG
+# Import IMPROVED RAG
 try:
-    from rag import get_known_agent_ids, format_all_agents_for_llm, get_agent_context
+    from rag import get_known_agent_ids, format_for_llm, get_rag
     from postgresql_store import get_conversation_history
     RAG_AVAILABLE = True
 except ImportError:
@@ -48,7 +48,7 @@ async def handle_chat_message(message: str):
         "source": "user",
         "message_type": "command",
         "timestamp": timestamp,
-        "role": "user"  # Add role for clarity
+        "role": "user"
     })
     
     # Handle special commands (quick responses without LLM)
@@ -59,7 +59,14 @@ async def handle_chat_message(message: str):
         menu = generate_startup_menu()
         return {"response": menu}
     
+    # Quick status check - use MINIMAL context
     if lower_msg == 'status':
+        if RAG_AVAILABLE:
+            agent_ids = get_known_agent_ids(limit=100)
+            if agent_ids:
+                rag = get_rag()
+                summary = rag.get_quick_status_summary(agent_ids)
+                return {"response": f"**Quick Status**\n\n{summary}"}
         return await generate_status_report()
     
     if lower_msg == 'report':
@@ -72,7 +79,7 @@ async def handle_chat_message(message: str):
         agent_name = lower_msg.replace('agent ', '').strip()
         return await get_agent_info(agent_name)
     
-    # CRITICAL: Classify intent FIRST before processing
+    # Classify intent FIRST before processing
     intent = classify_message_intent(message)
     
     print(f"[INTENT] Classified as: {intent}")
@@ -84,27 +91,21 @@ async def handle_chat_message(message: str):
     elif intent == "question":
         return await handle_general_chat(message)
     else:
-        # Default to general chat
         return await handle_general_chat(message)
 
 
 def classify_message_intent(message: str) -> str:
     """
-    Classify user message intent to prevent LLM from getting stuck.
+    Classify user message intent.
     
     Returns:
         "movement" | "multiple_movements" | "question" | "report_request"
     """
     lower_msg = message.lower()
     
-    # Movement keywords
     movement_keywords = ['move', 'go to', 'navigate', 'send', 'position', 'relocate', 'direct']
-    
-    # Question keywords
     question_keywords = ['what', 'why', 'how', 'when', 'where', 'who', 'is', 'are', 'can', 'should', 'tell me', 'explain']
-    
-    # Report keywords
-    report_keywords = ['report', 'status', 'analyze', 'summary', 'overview']
+    report_keywords = ['report', 'analyze', 'summary', 'overview']
     
     # Check for multiple agent movements
     agent_count = sum(1 for word in lower_msg.split() if 'agent' in word)
@@ -123,13 +124,11 @@ def classify_message_intent(message: str) -> str:
     if any(kw in lower_msg for kw in question_keywords) or message.strip().endswith('?'):
         return "question"
     
-    return "question"  # Default to question for safety
+    return "question"
 
 
 async def handle_movement_command(command: str):
-    """Handle single agent movement commands with improved LLM parsing"""
-    # NOTE: Do NOT log here - already logged in handle_chat_message
-    
+    """Handle single agent movement commands"""
     if not LLM_AVAILABLE:
         return {"response": "⚠️ LLM not available for command parsing"}
     
@@ -142,7 +141,6 @@ async def handle_movement_command(command: str):
             if agents_response.status_code == 200:
                 available_agents = agents_response.json().get("agents", {})
         
-        # IMPROVED PROMPT: More explicit about output format
         prompt = f"""You are a command parser for a GPS agent simulation system.
 
 AVAILABLE AGENTS: {", ".join(available_agents.keys()) if available_agents else "None"}
@@ -186,7 +184,7 @@ YOUR RESPONSE (one line only):"""
         raw_response = response['message']['content'].strip()
         print(f"[LLM PARSE] Raw: {raw_response}")
         
-        # Clean up response (remove any markdown, extra text)
+        # Clean up response
         lines = raw_response.split('\n')
         parsed_line = None
         for line in lines:
@@ -215,7 +213,6 @@ YOUR RESPONSE (one line only):"""
                 x = float(x_str)
                 y = float(y_str)
                 
-                # Validate coordinates
                 if not (X_RANGE[0] <= x <= X_RANGE[1] and Y_RANGE[0] <= y <= Y_RANGE[1]):
                     return {"response": f"❌ Coordinates ({x}, {y}) outside boundaries. X: {X_RANGE}, Y: {Y_RANGE}"}
                 
@@ -237,12 +234,7 @@ YOUR RESPONSE (one line only):"""
 
 
 async def handle_multiple_movement_commands(command: str):
-    """
-    Handle commands that move multiple agents at once.
-    Example: "move agent1 to 5,5 and agent2 to -3,7"
-    """
-    # NOTE: Do NOT log here - already logged in handle_chat_message
-    
+    """Handle commands that move multiple agents at once"""
     if not LLM_AVAILABLE:
         return {"response": "⚠️ LLM not available"}
     
@@ -322,59 +314,73 @@ YOUR JSON RESPONSE:"""
 
 async def handle_general_chat(message: str):
     """
-    Handle general conversation with IMPROVED prompting to avoid report loops.
+    Handle general conversation using LLM AGENT that requests its own data.
+    The LLM decides what it needs to know to answer accurately.
     """
-    # NOTE: Do NOT log here - already logged in handle_chat_message
-    
-    if not LLM_AVAILABLE or not RAG_AVAILABLE:
-        return {"response": "❌ LLM or RAG not available"}
+    if not LLM_AVAILABLE:
+        return {"response": "❌ LLM not available"}
     
     print(f"\n{'='*60}")
-    print(f"[CHAT] Processing general question")
+    print(f"[CHAT] Processing question with LLM Agent")
     print(f"[CHAT] Message: {message}")
     
     try:
-        # Get agent data
+        # Import LLM agent
+        from chatapp.mcp_llm_agent import answer_with_llm_agent
+        
+        # Let LLM agent handle the question
+        # It will iteratively request the data it needs
+        answer = await answer_with_llm_agent(message)
+        
+        # Log LLM response
+        add_log(answer, {
+            "source": "llm",
+            "message_type": "response",
+            "timestamp": datetime.now().isoformat(),
+            "role": "assistant"
+        })
+        
+        print(f"[CHAT] Response generated ({len(answer)} chars)")
+        print(f"{'='*60}\n")
+        
+        return {"response": answer}
+        
+    except ImportError as e:
+        # Fallback to old method if LLM agent not available
+        print(f"[CHAT] LLM Agent not available: {e}, using fallback method")
+        return await handle_general_chat_fallback(message)
+    except Exception as e:
+        print(f"[CHAT ERROR] {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {"response": f"❌ Error: {str(e)}"}
+
+
+async def handle_general_chat_fallback(message: str):
+    """Fallback method using old approach"""
+    if not RAG_AVAILABLE:
+        return {"response": "❌ RAG not available"}
+    
+    try:
         agent_ids = get_known_agent_ids(limit=100)
         
-        if agent_ids:
-            # Get detailed context for ALL agents
-            context = format_all_agents_for_llm(agent_ids)
-        else:
-            context = "⚠️ No agent data available yet."
+        if not agent_ids:
+            return {"response": "⚠️ No agent data available yet."}
         
-        # Get recent conversation
-        conversation = get_conversation_history(limit=5)
-        conversation_text = "\n".join([
-            f"{msg.get('metadata', {}).get('source', 'unknown')}: {msg.get('text', '')}"
-            for msg in conversation[:3]
-        ])
+        context = format_for_llm(message, agent_ids, minimal=False)
         
-        # IMPROVED PROMPT: Explicitly prevent report generation unless asked
         prompt = f"""You are an AI assistant monitoring a multi-agent GPS simulation.
 
-CURRENT SIMULATION STATE:
 {context}
-
-RECENT CONVERSATION:
-{conversation_text}
 
 USER QUESTION: "{message}"
 
-MISSION CONTEXT:
-- Agents must reach endpoint at {MISSION_END}
-- Agents may be jammed (GPS denied)
-- Jamming degrades communication quality
-
 RESPONSE GUIDELINES:
-1. Answer the user's question DIRECTLY and CONCISELY
-2. DO NOT generate a full report unless explicitly asked
-3. If asked "what's happening?", give a 2-3 sentence summary
-4. If asked about specific agents, focus on those agents only
-5. If suggesting actions, be specific (e.g., "Move agent1 to -5, 10")
-6. Keep responses under 150 words unless more detail is requested
+1. Answer DIRECTLY and CONCISELY based on the context above
+2. Reference ACTUAL positions and data shown in the context
+3. Keep responses under 200 words
 
-YOUR RESPONSE (be direct and conversational):"""
+YOUR RESPONSE:"""
         
         ollama_client = get_ollama_client()
         model_name = get_model_name()
@@ -390,7 +396,6 @@ YOUR RESPONSE (be direct and conversational):"""
         
         llm_response = response['message']['content']
         
-        # Log LLM response (but NOT the user message again)
         add_log(llm_response, {
             "source": "llm",
             "message_type": "response",
@@ -398,13 +403,7 @@ YOUR RESPONSE (be direct and conversational):"""
             "role": "assistant"
         })
         
-        print(f"[CHAT] Response generated ({len(llm_response)} chars)")
-        print(f"{'='*60}\n")
-        
         return {"response": llm_response}
         
     except Exception as e:
-        print(f"[CHAT ERROR] {str(e)}")
-        import traceback
-        traceback.print_exc()
         return {"response": f"❌ Error: {str(e)}"}

@@ -1,6 +1,5 @@
 /**
- * streaming.js - Real-time Stream Management
- * Handles EventSource connections for live data streaming
+ * streaming.js - Real-time Stream Management (FIXED with debug logging)
  */
 
 const StreamManager = {
@@ -27,31 +26,52 @@ const StreamManager = {
         // Handle incoming messages
         streamState.eventSource.onmessage = (event) => {
             try {
+                // DEBUG: Log raw data received
+                if (Math.random() < 0.1) { // Log 10% of messages to avoid spam
+                    DashboardUtils.log('STREAM', `${source} received data:`, event.data.substring(0, 100));
+                }
+                
                 const log = JSON.parse(event.data);
+                
+                // Validate log data
+                if (!log || (log.error && !log.log_id)) {
+                    // Skip error messages that aren't actual logs
+                    return;
+                }
+                
                 LogManager.addLog(source, log);
             } catch (error) {
                 DashboardUtils.error('STREAM', `Error parsing ${source} stream data`, error);
+                console.log('Raw data that failed to parse:', event.data);
             }
         };
 
-        // Handle errors
+        // Handle errors with smart reconnection
         streamState.eventSource.onerror = (error) => {
             DashboardUtils.error('STREAM', `${source} stream error`, error);
-            LogManager.updateLoadingStatus(source, '⚠️ Stream disconnected, retrying...', true);
             
-            // Auto-reconnect after 3 seconds
-            setTimeout(() => {
-                if (streamState.streaming) {
-                    DashboardUtils.log('STREAM', `Attempting to reconnect ${source}...`);
-                    this.stopStream(source);
-                    setTimeout(() => this.startStream(source), 1000);
-                }
-            }, 3000);
+            // Check if connection is still open
+            if (streamState.eventSource.readyState === EventSource.CONNECTING) {
+                LogManager.updateLoadingStatus(source, '🔄 Reconnecting...', false);
+            } else if (streamState.eventSource.readyState === EventSource.CLOSED) {
+                LogManager.updateLoadingStatus(source, '⚠️ Stream disconnected, retrying...', true);
+                
+                // Close and reconnect
+                streamState.eventSource.close();
+                
+                // Auto-reconnect after 3 seconds if still supposed to be streaming
+                setTimeout(() => {
+                    if (streamState.streaming) {
+                        DashboardUtils.log('STREAM', `Attempting to reconnect ${source}...`);
+                        this.startStream(source);
+                    }
+                }, 3000);
+            }
         };
 
         // Handle open
         streamState.eventSource.onopen = () => {
-            DashboardUtils.log('STREAM', `${source} stream connected`);
+            DashboardUtils.log('STREAM', `${source} stream connected ✓`);
             LogManager.updateLoadingStatus(source, '🟢 Live streaming', false);
             HealthMonitor.updateStatusIndicator(source, 'online');
         };
@@ -125,18 +145,21 @@ const StreamManager = {
     },
 
     /**
-     * Initialize streaming
+     * Initialize streaming with ALL data
      */
     initialize: async function() {
         DashboardUtils.log('STREAM', 'Initializing streaming...');
         
-        // Load initial data
+        // Load ALL initial data (not just 50)
+        DashboardUtils.log('STREAM', 'Loading initial PostgreSQL data...');
         await LogManager.loadInitialData('postgresql');
+        
+        DashboardUtils.log('STREAM', 'Loading initial Qdrant data...');
         await LogManager.loadInitialData('qdrant');
         
-        // Auto-start streaming after a delay
+        // Auto-start streaming after initial load
         setTimeout(() => {
-            DashboardUtils.log('STREAM', 'Auto-starting streams...');
+            DashboardUtils.log('STREAM', 'Auto-starting live streams...');
             this.startStream('postgresql');
             this.startStream('qdrant');
         }, 1000);

@@ -1,6 +1,9 @@
 /**
- * logs.js - Log Display Management (FIXED - handles null GPS values)
- * Handles creation and display of log messages
+ * logs.js - Log Display Management (FIXED - loads ALL logs)
+ * FIXES:
+ * 1. Loads ALL available logs (not just 50)
+ * 2. Better duplicate prevention
+ * 3. Smarter log limit management
  */
 
 const LogManager = {
@@ -75,7 +78,7 @@ const LogManager = {
     },
 
     /**
-     * Add log to container
+     * Add log to container with smart duplicate prevention
      */
     addLog: function(source, log) {
         const streamState = DashboardState.getStreamState(source);
@@ -90,8 +93,8 @@ const LogManager = {
         const logElement = this.createLogElement(log, source);
         streamState.container.prepend(logElement);
 
-        // Limit displayed logs to prevent memory issues
-        const maxLogs = 100;
+        // INCREASED LIMIT: Keep more logs in memory (500 instead of 100)
+        const maxLogs = 500;
         while (streamState.container.children.length > maxLogs) {
             const removed = streamState.container.removeChild(streamState.container.lastChild);
             const removedId = removed.dataset.logId;
@@ -103,17 +106,17 @@ const LogManager = {
         // Update count
         DashboardState.updateCount(source, streamState.logs.size);
 
-        // Auto-scroll to top for new logs
+        // Auto-scroll to top for new logs (if user is near top)
         if (streamState.container.scrollTop < 100) {
             streamState.container.scrollTop = 0;
         }
     },
 
     /**
-     * Load initial data for a source
+     * Load initial data for a source - FIXED to load ALL logs
      */
     loadInitialData: async function(source) {
-        DashboardUtils.log('LOGS', `Loading initial data for ${source}...`);
+        DashboardUtils.log('LOGS', `Loading ALL ${source} logs...`);
         
         try {
             const response = await fetch(`/data/${source}`);
@@ -128,7 +131,13 @@ const LogManager = {
                 streamState.container.innerHTML = '';
                 
                 // Add logs in reverse order (newest first)
-                data.logs.reverse().forEach(log => this.addLog(source, log));
+                // NOTE: Server returns newest first already, so we just add them
+                data.logs.forEach(log => this.addLog(source, log));
+                
+                DashboardUtils.log('LOGS', `✓ Displayed ${streamState.logs.size} ${source} logs`);
+            } else {
+                DashboardUtils.log('LOGS', `No ${source} logs available yet`);
+                this.updateLoadingStatus(source, 'No data yet - waiting for simulation', false);
             }
         } catch (error) {
             DashboardUtils.error('LOGS', `Failed to load ${source} data`, error);

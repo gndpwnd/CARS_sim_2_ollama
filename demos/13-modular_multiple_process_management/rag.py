@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """
-Simple RAG System - Retrieval Augmented Generation
-Orchestrates data retrieval from Qdrant (telemetry) and PostgreSQL (messages)
+Improved RAG System - FIXED vector type casting and agent discovery
+
+FIXES:
+1. Proper vector casting for PostgreSQL queries
+2. Better agent ID discovery from Qdrant
+3. Fallback mechanisms when data is missing
+4. Timestamp normalization for sorting
 """
 
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 import traceback
 
@@ -13,12 +18,15 @@ try:
     from qdrant_store import (
         get_agent_position_history,
         get_nmea_messages,
-        search_telemetry
+        search_telemetry,
+        qdrant_client,
+        TELEMETRY_COLLECTION
     )
     QDRANT_AVAILABLE = True
 except ImportError:
     print("[RAG] Warning: Qdrant store not available")
     QDRANT_AVAILABLE = False
+    qdrant_client = None
 
 try:
     from postgresql_store import (
@@ -27,388 +35,525 @@ try:
         get_conversation_history,
         retrieve_relevant
     )
+    import psycopg2
+    from core.config import DB_CONFIG
     POSTGRESQL_AVAILABLE = True
 except ImportError:
     print("[RAG] Warning: PostgreSQL store not available")
     POSTGRESQL_AVAILABLE = False
 
 
-class SimpleRAG:
+class ImprovedRAG:
     """
-    Simple RAG system that retrieves context for LLM queries
-    
-    Data Flow:
-    - Telemetry (positions, NMEA, GPS metrics) → Qdrant
-    - Messages (user, LLM, agent notifications) → PostgreSQL
+    Improved RAG with proper data segregation and fixed queries
     """
     
     def __init__(self, default_history_limit: int = 5):
         self.default_history_limit = default_history_limit
+        self._model = None  # Lazy load sentence transformer
         print(f"[RAG] Initialized with history limit: {default_history_limit}")
     
-    def get_agent_context(self, agent_id: str, history_limit: Optional[int] = None) -> Dict[str, Any]:
-        """
-        Get comprehensive context for a specific agent
-        
-        Args:
-            agent_id: Agent identifier (e.g., "agent_1")
-            history_limit: Number of historical records to retrieve
-        
-        Returns:
-            Dictionary with telemetry, messages, and status
-        """
-        limit = history_limit or self.default_history_limit
-        context = {
-            'agent_id': agent_id,
-            'timestamp': datetime.now().isoformat(),
-            'telemetry': {},
-            'messages': {},
-            'errors': []
-        }
-        
-        # Get position history from Qdrant
-        if QDRANT_AVAILABLE:
-            try:
-                positions = get_agent_position_history(agent_id, limit=limit)
-                context['telemetry']['position_history'] = positions
-                
-                if positions:
-                    context['telemetry']['current_position'] = positions[0]['position']
-                    context['telemetry']['jammed'] = positions[0]['jammed']
-                    context['telemetry']['communication_quality'] = positions[0]['communication_quality']
-            except Exception as e:
-                print(f"[RAG] Error getting position history: {e}")
-                context['telemetry']['error'] = str(e)
-        
-        # Get agent messages from PostgreSQL
-        if POSTGRESQL_AVAILABLE:
-            try:
-                messages = get_messages_by_source(agent_id, limit=limit)
-                context['messages']['history'] = messages
-                
-                # Get errors specifically
-                errors = get_agent_errors(agent_id, limit=limit)
-                context['errors'] = errors
-            except Exception as e:
-                print(f"[RAG] Error getting messages: {e}")
-                context['messages']['error'] = str(e)
-        
-        return context
+    def _get_model(self):
+        """Lazy load sentence transformer model"""
+        if self._model is None:
+            from sentence_transformers import SentenceTransformer
+            self._model = SentenceTransformer("all-MiniLM-L6-v2")
+        return self._model
     
-    def get_all_agents_status(self, agent_ids: List[str]) -> Dict[str, Any]:
+    def get_documentation_context(self, query: Optional[str] = None, max_docs: int = 3) -> str:
         """
-        Get current status for all agents (lightweight, latest data only)
+        Retrieve relevant documentation snippets.
+        FIXED: Proper vector casting for PostgreSQL
         
         Args:
-            agent_ids: List of agent identifiers
-        
+            query: Optional query to find relevant docs
+            max_docs: Maximum documentation chunks to retrieve
+            
         Returns:
-            Dictionary mapping agent_id to current status
+            Formatted documentation string
         """
-        status = {}
+        if not POSTGRESQL_AVAILABLE:
+            return ""
+        
+        try:
+            with psycopg2.connect(**DB_CONFIG) as conn:
+                with conn.cursor() as cur:
+                    if query:
+                        # FIXED: Generate embedding and cast properly
+                        model = self._get_model()
+                        query_vec = model.encode([query])[0].tolist()
+                        
+                        # FIXED: Cast the list to vector type explicitly
+                        cur.execute(f"""
+                            SELECT text, metadata
+                            FROM logs
+                            WHERE metadata->>'message_type' = 'documentation'
+                            ORDER BY embedding <-> %s::vector
+                            LIMIT %s;
+                        """, (query_vec, max_docs))
+                    else:
+                        # Get high-priority docs (like system overview)
+                        cur.execute("""
+                            SELECT text, metadata
+                            FROM logs
+                            WHERE metadata->>'message_type' = 'documentation'
+                            AND (metadata->>'priority' = 'high' 
+                                 OR metadata->>'doc_type' = 'system_overview')
+                            ORDER BY created_at DESC
+                            LIMIT %s;
+                        """, (max_docs,))
+                    
+                    docs = cur.fetchall()
+                    
+                    if not docs:
+                        print("[RAG] No documentation found in database")
+                        return ""
+                    
+                    # Format documentation
+                    doc_text = "=== SYSTEM DOCUMENTATION ===\n\n"
+                    for text, metadata in docs:
+                        doc_type = metadata.get('doc_type', 'general')
+                        # Truncate very long docs
+                        if len(text) > 1000:
+                            text = text[:1000] + "\n... (truncated)"
+                        doc_text += f"[{doc_type.upper()}]\n{text}\n\n"
+                    
+                    return doc_text
+                    
+        except Exception as e:
+            print(f"[RAG] Error retrieving documentation: {e}")
+            traceback.print_exc()
+            return ""
+    
+    def get_live_agent_data(self, agent_ids: List[str], history_limit: int = 5) -> Dict[str, Any]:
+        """
+        Get CURRENT/RECENT telemetry for agents from Qdrant.
+        IMPROVED: Better error handling and fallbacks
+        
+        Args:
+            agent_ids: List of agent IDs
+            history_limit: How many recent positions to retrieve
+            
+        Returns:
+            Dictionary with current positions and recent history
+        """
+        if not QDRANT_AVAILABLE:
+            print("[RAG] Qdrant not available")
+            return {}
+        
+        agents_data = {}
         
         for agent_id in agent_ids:
             try:
-                agent_status = {
-                    'agent_id': agent_id,
-                    'position': None,
-                    'jammed': False,
-                    'communication_quality': 0.0,
-                    'error_count': 0
-                }
+                # Get recent position history
+                positions = get_agent_position_history(agent_id, limit=history_limit)
                 
-                # Get latest position from Qdrant (just 1 record)
-                if QDRANT_AVAILABLE:
-                    positions = get_agent_position_history(agent_id, limit=1)
-                    if positions:
-                        latest = positions[0]
-                        agent_status['position'] = latest['position']
-                        agent_status['jammed'] = latest['jammed']
-                        agent_status['communication_quality'] = latest['communication_quality']
-                
-                # Get error count from PostgreSQL
-                if POSTGRESQL_AVAILABLE:
-                    errors = get_agent_errors(agent_id, limit=10)
-                    agent_status['error_count'] = len(errors)
-                
-                status[agent_id] = agent_status
-                
+                if positions:
+                    current = positions[0]  # Most recent
+                    
+                    agents_data[agent_id] = {
+                        'current_position': current['position'],
+                        'jammed': current['jammed'],
+                        'communication_quality': current['communication_quality'],
+                        'timestamp': current['timestamp'],
+                        'position_history': [
+                            {
+                                'position': p['position'],
+                                'jammed': p['jammed'],
+                                'timestamp': p['timestamp']
+                            }
+                            for p in positions
+                        ]
+                    }
+                else:
+                    print(f"[RAG] No position data for {agent_id}")
             except Exception as e:
-                print(f"[RAG] Error getting status for {agent_id}: {e}")
-                status[agent_id] = {'error': str(e)}
+                print(f"[RAG] Error getting data for {agent_id}: {e}")
+                continue
         
-        return status
+        return agents_data
     
-    def get_nmea_context(self, agent_id: Optional[str] = None, limit: int = 10) -> List[Dict[str, Any]]:
+    def get_agent_errors_and_events(self, agent_id: str, limit: int = 10) -> List[Dict[str, Any]]:
         """
-        Get recent NMEA messages for analysis
+        Get recent errors and important events for an agent.
+        FIXED: Normalize timestamps before sorting
         
         Args:
-            agent_id: Optional agent filter
-            limit: Number of messages
-        
+            agent_id: Agent identifier
+            limit: Max events to retrieve
+            
         Returns:
-            List of NMEA message records
-        """
-        if not QDRANT_AVAILABLE:
-            return []
-        
-        try:
-            return get_nmea_messages(agent_id, limit=limit)
-        except Exception as e:
-            print(f"[RAG] Error getting NMEA messages: {e}")
-            return []
-    
-    def semantic_search(self, query: str, limit: int = 5) -> Dict[str, Any]:
-        """
-        Perform semantic search across both databases
-        
-        Args:
-            query: Natural language query
-            limit: Max results per source
-        
-        Returns:
-            Combined results from Qdrant and PostgreSQL
-        """
-        results = {
-            'query': query,
-            'telemetry_results': [],
-            'message_results': []
-        }
-        
-        # Search telemetry in Qdrant
-        if QDRANT_AVAILABLE:
-            try:
-                telemetry = search_telemetry(query, limit=limit)
-                results['telemetry_results'] = telemetry
-            except Exception as e:
-                print(f"[RAG] Error searching telemetry: {e}")
-        
-        # Search messages in PostgreSQL
-        if POSTGRESQL_AVAILABLE:
-            try:
-                messages = retrieve_relevant(query, k=limit)
-                results['message_results'] = messages
-            except Exception as e:
-                print(f"[RAG] Error searching messages: {e}")
-        
-        return results
-    
-    def get_conversation_context(self, limit: int = 20) -> List[Dict[str, Any]]:
-        """
-        Get recent conversation history (user/LLM messages only)
-        
-        Args:
-            limit: Number of messages
-        
-        Returns:
-            List of conversation messages
+            List of error/event records
         """
         if not POSTGRESQL_AVAILABLE:
             return []
         
         try:
-            return get_conversation_history(limit=limit)
+            # Get errors
+            errors = get_agent_errors(agent_id, limit=limit)
+            
+            # FIXED: Normalize error timestamps to strings
+            for error in errors:
+                if 'created_at' in error:
+                    if isinstance(error['created_at'], datetime):
+                        error['created_at'] = error['created_at'].isoformat()
+                    elif not isinstance(error['created_at'], str):
+                        error['created_at'] = str(error['created_at'])
+            
+            # Get notifications (recovery events, etc.)
+            with psycopg2.connect(**DB_CONFIG) as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT text, metadata, created_at
+                        FROM logs
+                        WHERE metadata->>'source' = %s
+                        AND metadata->>'message_type' = 'notification'
+                        ORDER BY created_at DESC
+                        LIMIT %s;
+                    """, (agent_id, limit))
+                    
+                    notifications = [
+                        {
+                            'text': row[0],
+                            'metadata': row[1],
+                            'created_at': row[2].isoformat() if isinstance(row[2], datetime) else str(row[2]),
+                            'type': 'notification'
+                        }
+                        for row in cur.fetchall()
+                    ]
+            
+            # Combine and sort by time (all timestamps now strings)
+            all_events = errors + notifications
+            all_events.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+            
+            return all_events[:limit]
+            
         except Exception as e:
-            print(f"[RAG] Error getting conversation: {e}")
+            print(f"[RAG] Error getting events for {agent_id}: {e}")
+            traceback.print_exc()
             return []
     
-    def format_agent_context_for_llm(self, agent_id: str, history_limit: Optional[int] = None) -> str:
+    def assemble_context_for_llm(
+        self, 
+        query: str,
+        agent_ids: List[str],
+        include_documentation: bool = True,
+        include_conversation: bool = True
+    ) -> str:
         """
-        Format agent context into a readable string for LLM consumption
+        Assemble complete context for LLM with proper structure.
+        IMPROVED: Better empty data handling
         
         Args:
-            agent_id: Agent identifier
-            history_limit: Number of historical records
-        
+            query: User's question
+            agent_ids: List of agents to include
+            include_documentation: Whether to include system docs
+            include_conversation: Whether to include chat history
+            
         Returns:
-            Formatted string with all relevant context
+            Formatted context string for LLM
         """
-        context = self.get_agent_context(agent_id, history_limit)
+        context_parts = []
         
-        output = f"=== AGENT CONTEXT: {agent_id} ===\n\n"
-        
-        # Current Status
-        if context['telemetry'].get('current_position'):
-            pos = context['telemetry']['current_position']
-            jammed = context['telemetry'].get('jammed', False)
-            comm = context['telemetry'].get('communication_quality', 0)
+        # 1. DOCUMENTATION (if relevant to query)
+        if include_documentation:
+            # Only include docs if query seems to need system knowledge
+            needs_docs = any(word in query.lower() for word in [
+                'how', 'what is', 'explain', 'why', 'works', 'system', 'architecture',
+                'jamming', 'recovery', 'gps', 'mission'
+            ])
             
-            output += f"CURRENT STATUS:\n"
-            output += f"  Position: ({pos[0]:.2f}, {pos[1]:.2f})\n"
-            output += f"  Status: {'JAMMED' if jammed else 'CLEAR'}\n"
-            output += f"  Communication Quality: {comm:.2f}\n\n"
+            if needs_docs:
+                docs = self.get_documentation_context(query, max_docs=2)
+                if docs:
+                    context_parts.append(docs)
+                    context_parts.append("="*60 + "\n")
         
-        # Position History
-        if context['telemetry'].get('position_history'):
-            output += f"POSITION HISTORY (last {len(context['telemetry']['position_history'])} positions):\n"
-            for i, pos_data in enumerate(context['telemetry']['position_history']):
-                pos = pos_data['position']
-                status = 'JAMMED' if pos_data['jammed'] else 'CLEAR'
-                output += f"  {i+1}. ({pos[0]:.2f}, {pos[1]:.2f}) - {status}\n"
-            output += "\n"
-        
-        # Recent Errors
-        if context['errors']:
-            output += f"RECENT ERRORS ({len(context['errors'])}):\n"
-            for error in context['errors'][:3]:  # Show max 3
-                output += f"  - {error.get('text', 'Unknown error')}\n"
-            output += "\n"
-        
-        # Recent Messages
-        if context['messages'].get('history'):
-            output += f"RECENT MESSAGES:\n"
-            for msg in context['messages']['history'][:3]:  # Show max 3
-                output += f"  - {msg.get('text', 'No text')}\n"
-            output += "\n"
-        
-        return output
-    
-    def format_all_agents_for_llm(self, agent_ids: List[str]) -> str:
-        """
-        Format status for all agents into LLM-friendly format
-        
-        Args:
-            agent_ids: List of agent identifiers
-        
-        Returns:
-            Formatted string with all agents' status
-        """
-        status = self.get_all_agents_status(agent_ids)
-        
-        output = "=== ALL AGENTS STATUS ===\n\n"
-        
-        for agent_id, data in status.items():
-            if 'error' in data:
-                output += f"{agent_id}: ERROR - {data['error']}\n"
-                continue
+        # 2. LIVE AGENT DATA
+        if agent_ids:
+            live_data = self.get_live_agent_data(agent_ids, history_limit=5)
             
-            pos = data.get('position')
-            jammed = data.get('jammed', False)
-            comm = data.get('communication_quality', 0)
-            errors = data.get('error_count', 0)
-            
-            status_emoji = "🔴" if jammed else "🟢"
-            
-            if pos:
-                output += f"{status_emoji} {agent_id}: "
-                output += f"({pos[0]:.2f}, {pos[1]:.2f}) "
-                output += f"Comm: {comm:.2f} "
-                if errors > 0:
-                    output += f"[{errors} errors]"
-                output += "\n"
+            if live_data:
+                context_parts.append("=== CURRENT AGENT STATUS ===\n")
+                
+                for agent_id, data in live_data.items():
+                    pos = data['current_position']
+                    jammed = data['jammed']
+                    comm = data['communication_quality']
+                    
+                    status_emoji = "🔴" if jammed else "🟢"
+                    context_parts.append(
+                        f"{status_emoji} **{agent_id}**: Position ({pos[0]:.2f}, {pos[1]:.2f}) | "
+                        f"{'JAMMED' if jammed else 'CLEAR'} | Comm Quality: {comm:.2f}\n"
+                    )
+                    
+                    # Show recent trajectory if agent moved significantly
+                    if len(data['position_history']) > 1:
+                        prev_pos = data['position_history'][1]['position']
+                        if abs(pos[0] - prev_pos[0]) > 1 or abs(pos[1] - prev_pos[1]) > 1:
+                            context_parts.append(f"   Recent move: ({prev_pos[0]:.2f}, {prev_pos[1]:.2f}) → ({pos[0]:.2f}, {pos[1]:.2f})\n")
+                
+                context_parts.append("\n")
             else:
-                output += f"{agent_id}: No data available\n"
+                context_parts.append("⚠️ No live agent data available in telemetry database\n\n")
         
-        return output
+        # 3. RECENT ERRORS/EVENTS (if any)
+        if agent_ids:
+            any_errors = False
+            for agent_id in agent_ids:
+                events = self.get_agent_errors_and_events(agent_id, limit=3)
+                if events:
+                    if not any_errors:
+                        context_parts.append("=== RECENT EVENTS/ERRORS ===\n")
+                        any_errors = True
+                    
+                    for event in events:
+                        event_type = event.get('metadata', {}).get('message_type', 'unknown')
+                        text = event.get('text', '')
+                        context_parts.append(f"[{agent_id}] {event_type.upper()}: {text}\n")
+            
+            if any_errors:
+                context_parts.append("\n")
+        
+        # 4. CONVERSATION HISTORY (brief, if requested)
+        if include_conversation:
+            try:
+                conversation = get_conversation_history(limit=3)
+                if conversation:
+                    context_parts.append("=== RECENT CONVERSATION ===\n")
+                    for msg in conversation[-3:]:  # Last 3 messages
+                        role = msg.get('metadata', {}).get('source', 'unknown')
+                        text = msg.get('text', '')
+                        # Truncate long messages
+                        if len(text) > 150:
+                            text = text[:150] + "..."
+                        context_parts.append(f"{role}: {text}\n")
+                    context_parts.append("\n")
+            except Exception as e:
+                print(f"[RAG] Error getting conversation: {e}")
+        
+        return "".join(context_parts)
+    
+    def get_quick_status_summary(self, agent_ids: List[str]) -> str:
+        """
+        Get a quick, concise status summary.
+        IMPROVED: Better handling of missing data
+        
+        Args:
+            agent_ids: List of agents
+            
+        Returns:
+            Brief status string
+        """
+        live_data = self.get_live_agent_data(agent_ids, history_limit=1)
+        
+        if not live_data:
+            return "⚠️ No agent telemetry data available. Agents may not be running or data not yet recorded."
+        
+        summary = []
+        jammed_count = 0
+        
+        for agent_id in agent_ids:
+            if agent_id in live_data:
+                data = live_data[agent_id]
+                pos = data['current_position']
+                jammed = data['jammed']
+                comm = data['communication_quality']
+                
+                if jammed:
+                    jammed_count += 1
+                
+                status = "JAMMED" if jammed else "CLEAR"
+                summary.append(f"{agent_id}: ({pos[0]:.1f}, {pos[1]:.1f}) {status} [{comm:.2f}]")
+            else:
+                summary.append(f"{agent_id}: No data")
+        
+        result = "\n".join(summary)
+        
+        if jammed_count > 0:
+            result = f"⚠️  {jammed_count} agent(s) jammed\n\n" + result
+        else:
+            result = "✅ All agents clear\n\n" + result
+        
+        return result
 
 
 # Global RAG instance
 _rag_instance = None
 
-def get_rag() -> SimpleRAG:
+def get_rag() -> ImprovedRAG:
     """Get or create global RAG instance"""
     global _rag_instance
     if _rag_instance is None:
-        _rag_instance = SimpleRAG()
+        _rag_instance = ImprovedRAG()
     return _rag_instance
 
 
-# Convenience functions
-def get_agent_context(agent_id: str, history_limit: Optional[int] = None) -> Dict[str, Any]:
-    """Convenience function to get agent context"""
-    return get_rag().get_agent_context(agent_id, history_limit)
+def format_for_llm(query: str, agent_ids: List[str], minimal: bool = False) -> str:
+    """
+    Format context for LLM with proper structure.
+    
+    Args:
+        query: User's question
+        agent_ids: Agents to include
+        minimal: If True, skip docs and history for quick responses
+        
+    Returns:
+        Formatted context string
+    """
+    rag = get_rag()
+    
+    if minimal:
+        return rag.get_quick_status_summary(agent_ids)
+    else:
+        return rag.assemble_context_for_llm(
+            query,
+            agent_ids,
+            include_documentation=True,
+            include_conversation=True
+        )
 
-def get_all_agents_status(agent_ids: List[str]) -> Dict[str, Any]:
-    """Convenience function to get all agents status"""
-    return get_rag().get_all_agents_status(agent_ids)
-
-def format_for_llm(agent_id: str, history_limit: Optional[int] = None) -> str:
-    """Convenience function to format context for LLM"""
-    return get_rag().format_agent_context_for_llm(agent_id, history_limit)
-
-def format_all_agents_for_llm(agent_ids: List[str]) -> str:
-    """Convenience function to format all agents for LLM"""
-    return get_rag().format_all_agents_for_llm(agent_ids)
-
-
-if __name__ == "__main__":
-    print("Testing Simple RAG System...")
-    
-    rag = SimpleRAG(default_history_limit=5)
-    
-    # Test getting agent context
-    print("\n1. Testing get_agent_context()...")
-    context = rag.get_agent_context("agent_1")
-    print(f"   Context keys: {list(context.keys())}")
-    
-    # Test formatting for LLM
-    print("\n2. Testing format_agent_context_for_llm()...")
-    formatted = rag.format_agent_context_for_llm("agent_1", history_limit=3)
-    print(formatted)
-    
-    # Test all agents status
-    print("\n3. Testing get_all_agents_status()...")
-    status = rag.get_all_agents_status(["agent_1", "agent_2", "agent_3"])
-    print(f"   Status for {len(status)} agents")
-    
-    # Test formatting all agents
-    print("\n4. Testing format_all_agents_for_llm()...")
-    all_formatted = rag.format_all_agents_for_llm(["agent_1", "agent_2"])
-    print(all_formatted)
-    
-    print("\n✅ RAG system test complete")
 
 def get_known_agent_ids(limit: int = 50) -> List[str]:
     """
-    Discover agent IDs from stored telemetry data
+    Discover agent IDs from stored telemetry data.
+    IMPROVED: Better scanning and fallback to API
     
     Args:
         limit: Number of recent records to scan
-    
+        
     Returns:
-        List of unique agent IDs found in stored data
+        List of unique agent IDs
     """
     agent_ids = set()
     
-    # Try Qdrant first (telemetry data)
-    if QDRANT_AVAILABLE:
+    # Try Qdrant first
+    if QDRANT_AVAILABLE and qdrant_client:
         try:
-            from qdrant_store import qdrant_client, TELEMETRY_COLLECTION
+            # Scroll with larger limit to ensure we get all agents
+            results = qdrant_client.scroll(
+                collection_name=TELEMETRY_COLLECTION,
+                limit=limit * 2,  # Get more records
+                with_payload=True,
+                with_vectors=False
+            )[0]
             
-            if qdrant_client:
-                # Scroll through recent telemetry
-                results = qdrant_client.scroll(
-                    collection_name=TELEMETRY_COLLECTION,
-                    limit=limit,
-                    with_payload=True,
-                    with_vectors=False
-                )[0]
-                
-                for point in results:
-                    agent_id = point.payload.get('agent_id')
-                    if agent_id:
-                        agent_ids.add(agent_id)
-                
-                print(f"[RAG] Found {len(agent_ids)} agents from Qdrant: {agent_ids}")
+            for point in results:
+                agent_id = point.payload.get('agent_id')
+                if agent_id:
+                    agent_ids.add(agent_id)
+            
+            if agent_ids:
+                print(f"[RAG] Found {len(agent_ids)} agents from Qdrant: {sorted(agent_ids)}")
+                return sorted(list(agent_ids))
         except Exception as e:
             print(f"[RAG] Error scanning Qdrant for agents: {e}")
     
-    # Fallback to PostgreSQL
+    # Fallback: Try to get from simulation API
+    try:
+        import httpx
+        from core.config import SIMULATION_API_URL
+        
+        import asyncio
+        async def get_agents_from_api():
+            async with httpx.AsyncClient() as client:
+                response = await client.get(f"{SIMULATION_API_URL}/agents", timeout=2.0)
+                if response.status_code == 200:
+                    return list(response.json().get("agents", {}).keys())
+            return []
+        
+        # Run async function
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        api_agents = loop.run_until_complete(get_agents_from_api())
+        if api_agents:
+            agent_ids.update(api_agents)
+            print(f"[RAG] Found {len(api_agents)} agents from API: {sorted(api_agents)}")
+    except Exception as e:
+        print(f"[RAG] Could not get agents from API: {e}")
+    
+    # Fallback: Check PostgreSQL messages
     if not agent_ids and POSTGRESQL_AVAILABLE:
         try:
-            from postgresql_store import get_messages_by_type
+            with psycopg2.connect(**DB_CONFIG) as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT DISTINCT metadata->>'source'
+                        FROM logs
+                        WHERE metadata->>'source' LIKE 'agent%'
+                        LIMIT %s;
+                    """, (limit,))
+                    
+                    for row in cur.fetchall():
+                        if row[0]:
+                            agent_ids.add(row[0])
             
-            # Get recent telemetry messages
-            recent = get_messages_by_type('telemetry', limit=limit)
-            
-            for msg in recent:
-                source = msg.get('metadata', {}).get('source')
-                if source and source.startswith('agent'):
-                    agent_ids.add(source)
-            
-            print(f"[RAG] Found {len(agent_ids)} agents from PostgreSQL: {agent_ids}")
+            if agent_ids:
+                print(f"[RAG] Found {len(agent_ids)} agents from PostgreSQL: {sorted(agent_ids)}")
         except Exception as e:
             print(f"[RAG] Error scanning PostgreSQL for agents: {e}")
     
+    if not agent_ids:
+        print("[RAG] ⚠️ No agents found in any data source. Run the simulation first.")
+    
     return sorted(list(agent_ids))
+
+
+# Backward compatibility
+def get_agent_context(agent_id: str, history_limit: Optional[int] = None) -> Dict[str, Any]:
+    """Get agent context (legacy function)"""
+    rag = get_rag()
+    live_data = rag.get_live_agent_data([agent_id], history_limit or 5)
+    events = rag.get_agent_errors_and_events(agent_id, limit=10)
+    
+    return {
+        'agent_id': agent_id,
+        'live_data': live_data.get(agent_id, {}),
+        'events': events
+    }
+
+
+if __name__ == "__main__":
+    print("Testing Improved RAG System...")
+    
+    rag = ImprovedRAG()
+    
+    # Test documentation retrieval
+    print("\n1. Testing documentation context...")
+    docs = rag.get_documentation_context("How does GPS jamming work?")
+    print(f"   Retrieved {len(docs)} characters of documentation")
+    if docs:
+        print(f"   Preview: {docs[:200]}...")
+    
+    # Test agent discovery
+    print("\n2. Testing agent discovery...")
+    agents = get_known_agent_ids(limit=100)
+    print(f"   Found agents: {agents}")
+    
+    # Test live data retrieval
+    if agents:
+        print("\n3. Testing live agent data...")
+        live_data = rag.get_live_agent_data(agents[:3], history_limit=3)
+        print(f"   Retrieved data for {len(live_data)} agents")
+        for agent_id, data in live_data.items():
+            print(f"   - {agent_id}: {data.get('current_position')}")
+    
+    # Test context assembly
+    print("\n4. Testing context assembly...")
+    if agents:
+        context = rag.assemble_context_for_llm(
+            "What's happening with the agents?",
+            agents,
+            include_documentation=True,
+            include_conversation=True
+        )
+        print(f"   Assembled {len(context)} characters of context")
+        print("\n" + "="*60)
+        print(context)
+        print("="*60)
+    
+    print("\n✅ Improved RAG test complete")
