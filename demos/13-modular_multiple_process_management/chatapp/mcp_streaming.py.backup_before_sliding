@@ -1,11 +1,10 @@
 """
 Streaming endpoints for real-time log updates.
-FIXED: Fetches logs sorted by timestamp (newest first) to catch new telemetry
+COMPLETE CORRECT VERSION: Async streaming with async data functions
 """
 import json
 import asyncio
 from datetime import datetime
-from collections import deque
 from fastapi.responses import StreamingResponse
 
 # Import storage backends
@@ -38,20 +37,18 @@ def normalize_timestamp_to_iso(ts: any) -> str:
         return datetime.now().isoformat()
 
 
-def fetch_logs_from_qdrant(limit=200):
-    """
-    Fetch logs from Qdrant - SORTED BY TIMESTAMP (newest first)
-    
-    This ensures we always get the latest telemetry data.
-    """
+def fetch_logs_from_qdrant(limit=200, since_point_ids=None):
+    """Fetch logs from Qdrant with point ID tracking"""
     if not QDRANT_AVAILABLE or not qdrant_client:
         return []
     
+    if since_point_ids is None:
+        since_point_ids = set()
+    
     try:
-        # Fetch more logs to ensure we get recent ones
         results = qdrant_client.scroll(
             collection_name=TELEMETRY_COLLECTION,
-            limit=limit * 2,  # Fetch 2x to ensure we get newest
+            limit=limit,
             with_payload=True,
             with_vectors=False
         )[0]
@@ -59,6 +56,10 @@ def fetch_logs_from_qdrant(limit=200):
         logs = []
         for point in results:
             point_id = str(point.id)
+            
+            if point_id in since_point_ids:
+                continue
+            
             payload = point.payload
             raw_timestamp = payload.get('timestamp', datetime.now())
             iso_timestamp = normalize_timestamp_to_iso(raw_timestamp)
@@ -76,25 +77,15 @@ def fetch_logs_from_qdrant(limit=200):
                     'timestamp': iso_timestamp
                 },
                 'created_at': iso_timestamp,
-                'source': 'qdrant',
-                '_sort_key': raw_timestamp  # Keep original for sorting
+                'source': 'qdrant'
             }
             
             logs.append(log)
         
-        # FIXED: Sort by timestamp (newest first)
-        try:
-            logs.sort(key=lambda x: x['_sort_key'], reverse=True)
-        except Exception as e:
-            print(f"[STREAMING] Warning: Could not sort Qdrant logs: {e}")
-        
-        # Return only the requested limit (newest N logs)
-        return logs[:limit]
+        return logs
         
     except Exception as e:
         print(f"[STREAMING] Error fetching from Qdrant: {e}")
-        import traceback
-        traceback.print_exc()
         return []
 
 
@@ -102,10 +93,8 @@ async def get_qdrant_data():
     """Get recent Qdrant data - ASYNC version"""
     logs = fetch_logs_from_qdrant(limit=100)
     
-    # Remove internal sort key before sending to frontend
     for log in logs:
         log.pop('_point_id', None)
-        log.pop('_sort_key', None)
     
     return logs
 
@@ -142,68 +131,56 @@ async def get_postgresql_data():
 
 
 async def stream_qdrant():
-    """
-    Stream Qdrant logs in real-time with SLIDING WINDOW deduplication.
-    FIXED: Fetches newest logs first to catch new telemetry immediately.
-    """
+    """Stream Qdrant logs in real-time"""
     async def event_generator():
-        # Use deque with maxlen for sliding window (automatic eviction)
-        seen_point_ids = deque(maxlen=500)  # Only track last 500 IDs
+        seen_point_ids = set()
         check_count = 0
         initial_load_done = False
         
-        print("[STREAMING] Qdrant stream generator started (sorted by timestamp)")
+        print("[STREAMING] Qdrant stream generator started")
         
         while True:
             try:
                 check_count += 1
                 
-                # FIXED: Fetch logs sorted by timestamp (newest first)
-                logs = fetch_logs_from_qdrant(limit=200)
+                logs = fetch_logs_from_qdrant(limit=200, since_point_ids=seen_point_ids)
                 
-                # Filter to only NEW logs (not in our sliding window)
                 new_logs = [
                     log for log in logs 
                     if log.get('_point_id') not in seen_point_ids
                 ]
                 
-                if check_count == 1 or check_count % 10 == 0:
+                if check_count == 1 or check_count % 20 == 0:
                     print(f"[STREAMING] Qdrant check #{check_count}: "
                           f"fetched {len(logs)} total logs, "
                           f"{len(new_logs)} new logs, "
-                          f"tracking {len(seen_point_ids)}/500 IDs")
+                          f"seen {len(seen_point_ids)} point IDs")
                 
                 if new_logs:
-                    # Send new logs to frontend
                     for log in new_logs:
                         point_id = log.get('_point_id')
                         if point_id:
-                            seen_point_ids.append(point_id)  # Add to sliding window
+                            seen_point_ids.add(point_id)
                         
-                        # Remove internal fields before sending
                         log_copy = log.copy()
                         log_copy.pop('_point_id', None)
-                        log_copy.pop('_sort_key', None)
                         
                         yield f"data: {json.dumps(log_copy)}\n\n"
                     
-                    print(f"[STREAMING] Qdrant: SENT {len(new_logs)} new logs "
-                          f"(window: {len(seen_point_ids)}/500)")
+                    print(f"[STREAMING] Qdrant: SENT {len(new_logs)} new logs to frontend "
+                          f"(total seen: {len(seen_point_ids)})")
                     
                     if not initial_load_done:
                         initial_load_done = True
                         print(f"[STREAMING] Qdrant: Initial load complete ({len(new_logs)} logs)")
                 
-                # Check every 1 second (faster to catch new telemetry)
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(0.5)
                 
             except asyncio.CancelledError:
                 print("[STREAMING] Qdrant stream cancelled by client")
                 break
             except Exception as e:
                 print(f"[STREAMING] Error in Qdrant stream: {e}")
-                import traceback
-                traceback.print_exc()
                 await asyncio.sleep(1)
     
     return StreamingResponse(
@@ -217,13 +194,12 @@ async def stream_qdrant():
 
 
 async def stream_postgresql():
-    """Stream PostgreSQL logs in real-time with sliding window"""
+    """Stream PostgreSQL logs in real-time"""
     async def event_generator():
-        # Use deque with maxlen for sliding window
-        seen_ids = deque(maxlen=500)  # Only track last 500 IDs
+        seen_ids = set()
         check_count = 0
         
-        print("[STREAMING] PostgreSQL stream generator started (sliding window mode)")
+        print("[STREAMING] PostgreSQL stream generator started")
         
         while True:
             try:
@@ -241,21 +217,20 @@ async def stream_postgresql():
                     except Exception as e:
                         print(f"[STREAMING] Error fetching PostgreSQL messages: {e}")
                 
-                # Filter to only NEW messages
                 new_messages = [
                     msg for msg in messages 
                     if str(msg['id']) not in seen_ids
                 ]
                 
-                if check_count == 1 or check_count % 10 == 0:
+                if check_count == 1 or check_count % 20 == 0:
                     print(f"[STREAMING] PostgreSQL check #{check_count}: "
                           f"fetched {len(messages)} total, "
                           f"{len(new_messages)} new, "
-                          f"tracking {len(seen_ids)}/500 IDs")
+                          f"seen {len(seen_ids)} IDs")
                 
                 for msg in new_messages:
                     msg_id = str(msg['id'])
-                    seen_ids.append(msg_id)  # Add to sliding window
+                    seen_ids.add(msg_id)
                     
                     log_entry = {
                         'log_id': msg_id[:8],
@@ -270,8 +245,7 @@ async def stream_postgresql():
                     yield f"data: {json.dumps(log_entry)}\n\n"
                 
                 if new_messages:
-                    print(f"[STREAMING] PostgreSQL: SENT {len(new_messages)} new messages "
-                          f"(window: {len(seen_ids)}/500)")
+                    print(f"[STREAMING] PostgreSQL: SENT {len(new_messages)} new messages")
                 
                 await asyncio.sleep(0.5)
                 

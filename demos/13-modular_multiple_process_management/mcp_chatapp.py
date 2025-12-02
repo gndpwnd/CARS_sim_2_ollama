@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 """
-MCP Chatapp - Simplified entry point
-Most logic is in mcp/ module
-
-This is the refactored entry point - most logic is in mcp/ module
+MCP Chatapp - Fast startup with proper async handling
 """
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,19 +30,20 @@ from chatapp import (
     get_qdrant_data
 )
 
-# Initialize LLM with preloading
+# Initialize LLM WITHOUT preloading (fast startup)
 print("[MCP] Initializing LLM...")
 try:
     import llm_config
     from llm_config import initialize_llm, get_model_name
     
-    ollama_client, llm_ready = initialize_llm(preload=True)
+    # DON'T preload - let it load on first request
+    ollama_client, llm_ready = initialize_llm(preload=False)
     LLM_MODEL = get_model_name()
     
     if llm_ready:
-        print(f"[MCP] ✓ LLM ready: {LLM_MODEL} at {llm_config.OLLAMA_HOST}")
+        print(f"[MCP] ✓ LLM configured: {LLM_MODEL} at {llm_config.OLLAMA_HOST} (will load on first use)")
     else:
-        print(f"[MCP] ⚠ LLM initialization had issues, will retry on first request")
+        print(f"[MCP] ⚠ LLM not available, will retry on first request")
 except ImportError as e:
     print(f"[MCP] ⚠ LLM not available: {e}")
     llm_ready = False
@@ -165,7 +163,7 @@ async def chat(request: Request):
         if not health['llm'] == 'ready':
             return {"response": "❌ LLM not available. Is Ollama running?"}
         
-        # Build request metadata (but DON'T log the message - let handle_chat_message do it)
+        # Build request metadata
         metadata = {
             "timestamp": datetime.now().isoformat(),
             "request_id": data.get('request_id', ''),
@@ -175,8 +173,6 @@ async def chat(request: Request):
         }
         
         print(f"[CHAT] Request metadata: {metadata}")
-        
-        # NOTE: Removed duplicate logging here - handle_chat_message logs the user message
         
         # Get simulation status for context
         try:
@@ -188,7 +184,7 @@ async def chat(request: Request):
         except Exception as e:
             print(f"[CHAT] Could not get simulation status: {e}")
         
-        # Process command (this will log the message internally)
+        # Process command
         result = await handle_chat_message(user_message)
         
         print("[CHAT] Request completed")

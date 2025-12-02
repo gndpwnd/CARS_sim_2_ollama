@@ -1,6 +1,6 @@
 """
 Streaming endpoints for real-time log updates.
-FIXED: Fetches logs sorted by timestamp (newest first) to catch new telemetry
+FIXED: Uses sliding window to prevent memory bloat and ensure new data flows
 """
 import json
 import asyncio
@@ -39,19 +39,14 @@ def normalize_timestamp_to_iso(ts: any) -> str:
 
 
 def fetch_logs_from_qdrant(limit=200):
-    """
-    Fetch logs from Qdrant - SORTED BY TIMESTAMP (newest first)
-    
-    This ensures we always get the latest telemetry data.
-    """
+    """Fetch logs from Qdrant - always get latest N logs"""
     if not QDRANT_AVAILABLE or not qdrant_client:
         return []
     
     try:
-        # Fetch more logs to ensure we get recent ones
         results = qdrant_client.scroll(
             collection_name=TELEMETRY_COLLECTION,
-            limit=limit * 2,  # Fetch 2x to ensure we get newest
+            limit=limit,
             with_payload=True,
             with_vectors=False
         )[0]
@@ -76,25 +71,15 @@ def fetch_logs_from_qdrant(limit=200):
                     'timestamp': iso_timestamp
                 },
                 'created_at': iso_timestamp,
-                'source': 'qdrant',
-                '_sort_key': raw_timestamp  # Keep original for sorting
+                'source': 'qdrant'
             }
             
             logs.append(log)
         
-        # FIXED: Sort by timestamp (newest first)
-        try:
-            logs.sort(key=lambda x: x['_sort_key'], reverse=True)
-        except Exception as e:
-            print(f"[STREAMING] Warning: Could not sort Qdrant logs: {e}")
-        
-        # Return only the requested limit (newest N logs)
-        return logs[:limit]
+        return logs
         
     except Exception as e:
         print(f"[STREAMING] Error fetching from Qdrant: {e}")
-        import traceback
-        traceback.print_exc()
         return []
 
 
@@ -102,10 +87,8 @@ async def get_qdrant_data():
     """Get recent Qdrant data - ASYNC version"""
     logs = fetch_logs_from_qdrant(limit=100)
     
-    # Remove internal sort key before sending to frontend
     for log in logs:
         log.pop('_point_id', None)
-        log.pop('_sort_key', None)
     
     return logs
 
@@ -144,21 +127,23 @@ async def get_postgresql_data():
 async def stream_qdrant():
     """
     Stream Qdrant logs in real-time with SLIDING WINDOW deduplication.
-    FIXED: Fetches newest logs first to catch new telemetry immediately.
+    
+    This prevents memory bloat by only tracking the last 500 point IDs,
+    ensuring new telemetry always appears in the stream.
     """
     async def event_generator():
-        # Use deque with maxlen for sliding window (automatic eviction)
+        # FIXED: Use deque with maxlen for sliding window (automatic eviction)
         seen_point_ids = deque(maxlen=500)  # Only track last 500 IDs
         check_count = 0
         initial_load_done = False
         
-        print("[STREAMING] Qdrant stream generator started (sorted by timestamp)")
+        print("[STREAMING] Qdrant stream generator started (sliding window mode)")
         
         while True:
             try:
                 check_count += 1
                 
-                # FIXED: Fetch logs sorted by timestamp (newest first)
+                # Always fetch latest 200 logs
                 logs = fetch_logs_from_qdrant(limit=200)
                 
                 # Filter to only NEW logs (not in our sliding window)
@@ -180,10 +165,8 @@ async def stream_qdrant():
                         if point_id:
                             seen_point_ids.append(point_id)  # Add to sliding window
                         
-                        # Remove internal fields before sending
                         log_copy = log.copy()
                         log_copy.pop('_point_id', None)
-                        log_copy.pop('_sort_key', None)
                         
                         yield f"data: {json.dumps(log_copy)}\n\n"
                     
@@ -194,8 +177,11 @@ async def stream_qdrant():
                         initial_load_done = True
                         print(f"[STREAMING] Qdrant: Initial load complete ({len(new_logs)} logs)")
                 
-                # Check every 1 second (faster to catch new telemetry)
-                await asyncio.sleep(1.0)
+                # Check less frequently after initial load (reduce CPU usage)
+                if initial_load_done:
+                    await asyncio.sleep(1.0)  # Check every 1 second
+                else:
+                    await asyncio.sleep(0.5)  # Check every 0.5 seconds during startup
                 
             except asyncio.CancelledError:
                 print("[STREAMING] Qdrant stream cancelled by client")
@@ -219,7 +205,7 @@ async def stream_qdrant():
 async def stream_postgresql():
     """Stream PostgreSQL logs in real-time with sliding window"""
     async def event_generator():
-        # Use deque with maxlen for sliding window
+        # FIXED: Use deque with maxlen for sliding window
         seen_ids = deque(maxlen=500)  # Only track last 500 IDs
         check_count = 0
         

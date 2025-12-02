@@ -1,7 +1,7 @@
 {
-  "gps_satellites": 32,
-  "glonass_satellites": 24,
-  "galileo_satellites": 30,
+  "gps_satellites": 10,
+  "glonass_satellites": 5,
+  "galileo_satellites": 5,
   "base_station": {
     "latitude": 40.7128,
     "longitude": -74.0060,

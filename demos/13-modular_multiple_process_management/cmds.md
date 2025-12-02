@@ -16,4 +16,8 @@ python main_gui.py
 
 tree -I "__pycache__" -I "docs" -I "docs_old" -I "pgdata" -I "qdrant_data" | xclip -selection clipboard
 
+tree -I "__pycache__" -I "docs" -I "docs_old" -I "pgdata" -I "qdrant_data" \
+  | iconv -f UTF-8 -t UTF-16LE \
+  | clip.exe
+
 ```

@@ -1,12 +1,11 @@
 /**
- * logs.js - Log Display Management (FIXED - loads ALL logs)
- * FIXES:
- * 1. Loads ALL available logs (not just 50)
- * 2. Better duplicate prevention
- * 3. Smarter log limit management
+ * logs.js - Log Display Management
+ * Shows latest 200 messages per stream
  */
 
 const LogManager = {
+    MAX_LOGS: 200,  // Show latest 200 messages
+
     /**
      * Create a log element
      */
@@ -27,18 +26,18 @@ const LogManager = {
         if (role === 'assistant' || role === 'ollama') div.classList.add('ollama-log');
         if (role === 'system') div.classList.add('system-log');
 
-        // Build GPS info if available - WITH NULL CHECKS
+        // Build GPS info if available
         let gpsInfo = '';
         if (metadata.gps_fix_quality !== undefined || metadata.gps_satellites !== undefined) {
             gpsInfo = '<div class="gps-info">';
             if (metadata.gps_fix_quality !== undefined && metadata.gps_fix_quality !== null) {
-                gpsInfo += `<span class="gps-metric">Fix Quality: ${metadata.gps_fix_quality}</span>`;
+                gpsInfo += `<span class="gps-metric">Fix: ${metadata.gps_fix_quality}</span>`;
             }
             if (metadata.gps_satellites !== undefined && metadata.gps_satellites !== null) {
-                gpsInfo += `<span class="gps-metric">Satellites: ${metadata.gps_satellites}</span>`;
+                gpsInfo += `<span class="gps-metric">Sats: ${metadata.gps_satellites}</span>`;
             }
             if (metadata.gps_signal_quality !== undefined && metadata.gps_signal_quality !== null) {
-                gpsInfo += `<span class="gps-metric">Signal: ${metadata.gps_signal_quality.toFixed(1)} dB-Hz</span>`;
+                gpsInfo += `<span class="gps-metric">Signal: ${metadata.gps_signal_quality.toFixed(1)} dB</span>`;
             }
             gpsInfo += '</div>';
         }
@@ -55,7 +54,7 @@ const LogManager = {
         }
         if (metadata.communication_quality !== undefined && metadata.communication_quality !== null) {
             const commQuality = (metadata.communication_quality * 100).toFixed(0);
-            metaHtml += `<span class="log-quality">📡 Comm: ${commQuality}%</span>`;
+            metaHtml += `<span class="log-quality">📡 ${commQuality}%</span>`;
         }
         if (log.log_id) {
             const shortId = String(log.log_id).substring(0, 8);
@@ -69,79 +68,78 @@ const LogManager = {
             </div>
             <div class="log-body">${DashboardUtils.escapeHtml(String(text))}</div>
             ${gpsInfo}
-            <div class="log-meta">
-                ${metaHtml}
-            </div>
+            <div class="log-meta">${metaHtml}</div>
         `;
 
         return div;
     },
 
     /**
-     * Add log to container with smart duplicate prevention
+     * Add log to container (newest at top)
      */
     addLog: function(source, log) {
         const streamState = DashboardState.getStreamState(source);
         const logId = log.log_id || log.id || DashboardUtils.generateId(source);
         
-        // Prevent duplicates
-        if (streamState.logs.has(logId)) {
-            return;
-        }
+        // Skip duplicates
+        if (streamState.logs.has(logId)) return;
         streamState.logs.add(logId);
 
+        // Add to top
         const logElement = this.createLogElement(log, source);
         streamState.container.prepend(logElement);
 
-        // INCREASED LIMIT: Keep more logs in memory (500 instead of 100)
-        const maxLogs = 500;
-        while (streamState.container.children.length > maxLogs) {
+        // Keep only latest MAX_LOGS messages
+        while (streamState.container.children.length > this.MAX_LOGS) {
             const removed = streamState.container.removeChild(streamState.container.lastChild);
             const removedId = removed.dataset.logId;
-            if (removedId) {
-                streamState.logs.delete(removedId);
-            }
+            if (removedId) streamState.logs.delete(removedId);
         }
 
         // Update count
         DashboardState.updateCount(source, streamState.logs.size);
 
-        // Auto-scroll to top for new logs (if user is near top)
+        // Update badge if at limit
+        const countBadge = document.getElementById(source === 'postgresql' ? 'pg-count' : 'qdrant-count');
+        if (countBadge) {
+            countBadge.classList.toggle('at-limit', streamState.logs.size >= this.MAX_LOGS);
+            countBadge.title = streamState.logs.size >= this.MAX_LOGS 
+                ? `Showing ${this.MAX_LOGS} most recent` 
+                : '';
+        }
+
+        // Auto-scroll to top if near top
         if (streamState.container.scrollTop < 100) {
             streamState.container.scrollTop = 0;
         }
     },
 
     /**
-     * Load initial data for a source - FIXED to load ALL logs
+     * Load initial data
      */
     loadInitialData: async function(source) {
-        DashboardUtils.log('LOGS', `Loading ALL ${source} logs...`);
+        DashboardUtils.log('LOGS', `Loading ${source} logs...`);
         
         try {
             const response = await fetch(`/data/${source}`);
             const data = await response.json();
             
             if (data.logs && data.logs.length > 0) {
-                DashboardUtils.log('LOGS', `Loaded ${data.logs.length} ${source} logs`);
-                
                 const streamState = DashboardState.getStreamState(source);
-                
-                // Clear empty state
                 streamState.container.innerHTML = '';
                 
-                // Add logs in reverse order (newest first)
-                // NOTE: Server returns newest first already, so we just add them
-                data.logs.forEach(log => this.addLog(source, log));
+                // Take only latest MAX_LOGS
+                const logsToShow = data.logs.slice(0, this.MAX_LOGS);
+                logsToShow.forEach(log => this.addLog(source, log));
                 
-                DashboardUtils.log('LOGS', `✓ Displayed ${streamState.logs.size} ${source} logs`);
+                DashboardUtils.log('LOGS', `✓ Loaded ${logsToShow.length} ${source} logs`);
             } else {
-                DashboardUtils.log('LOGS', `No ${source} logs available yet`);
-                this.updateLoadingStatus(source, 'No data yet - waiting for simulation', false);
+                DashboardUtils.log('LOGS', `No ${source} logs yet`);
+                this.updateLoadingStatus(source, 'No data yet', false);
             }
         } catch (error) {
-            DashboardUtils.error('LOGS', `Failed to load ${source} data`, error);
-            this.updateLoadingStatus(source, 'Failed to load initial data', true);
+            DashboardUtils.error('LOGS', `Failed to load ${source}`, error);
+            this.updateLoadingStatus(source, 'Failed to load', true);
         }
     },
 
@@ -149,7 +147,9 @@ const LogManager = {
      * Update loading status
      */
     updateLoadingStatus: function(source, message, isError) {
-        const loadingElement = document.getElementById(`${source === 'postgresql' ? 'pg' : 'qdrant'}-loading`);
+        const loadingElement = document.getElementById(
+            source === 'postgresql' ? 'pg-loading' : 'qdrant-loading'
+        );
         if (loadingElement) {
             loadingElement.textContent = message;
             loadingElement.classList.toggle('error', isError);
@@ -158,5 +158,4 @@ const LogManager = {
     }
 };
 
-// Make log manager available globally
 window.LogManager = LogManager;
