@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-LLM Agent with Data Request Capability
-FIXED: Better understanding of history queries for "past few minutes" questions
+Enhanced LLM Agent with LIVE API data access
+Adds Simulation API as primary source for current state
 """
 import json
+import httpx
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
@@ -12,135 +13,96 @@ try:
     LLM_AVAILABLE = True
 except ImportError:
     LLM_AVAILABLE = False
-    print("[LLM_AGENT] LLM not available")
 
 try:
     from rag import get_known_agent_ids
-    from postgresql_store import (
-        get_messages_by_source,
-        get_agent_errors,
-        get_conversation_history
-    )
-    from qdrant_store import (
-        get_agent_position_history,
-        search_telemetry
-    )
-    import httpx
+    from postgresql_store import get_messages_by_source, get_agent_errors
+    from qdrant_store import get_agent_position_history, search_telemetry
     from core.config import SIMULATION_API_URL, MISSION_END, X_RANGE, Y_RANGE
     DATA_AVAILABLE = True
 except ImportError:
     DATA_AVAILABLE = False
-    print("[LLM_AGENT] Data sources not available")
 
 
-# IMPROVED DATA SCHEMA WITH CLEAR HISTORY EXAMPLES
-DATA_SCHEMA = """
-=== AVAILABLE DATA SOURCES ===
+# ENHANCED DATA SCHEMA WITH LIVE API
+ENHANCED_DATA_SCHEMA = """
+=== AVAILABLE DATA SOURCES (PRIORITY ORDER) ===
 
-1. AGENT CURRENT STATUS (Real-time from Qdrant - last known position)
-   - Source: Qdrant telemetry database (most recent entry per agent)
-   - Returns: Current position, jamming status, communication quality
-   - Use for: "What is the current status?", "Where is agent X now?", "What agents are jammed?"
-   - Request type: "agent_positions"
-   - Example: {"type": "agent_positions", "agents": ["agent1", "agent2"]} or {"type": "agent_positions", "agents": "all"}
+1. **LIVE SIMULATION API** [PRIMARY - MOST CURRENT]
+   - Source: HTTP API at sim_api.py (in-memory state)
+   - Returns: Real-time agent positions, jamming status, communication quality
+   - Latency: <50ms
+   - Use for: "What is happening NOW?", "Current status", "Where are agents?"
+   - Request type: "live_agent_status"
+   - Example: {"type": "live_agent_status", "agents": "all"}
+   - ✅ ALWAYS USE THIS FOR CURRENT STATE QUESTIONS
 
-2. AGENT POSITION HISTORY (Time-series from Qdrant - past movements)
-   - Source: Qdrant telemetry database (last N entries per agent)
-   - Returns: List of {position: (x,y), jammed: bool, communication_quality: float, timestamp: str}
-   - Use for: "What happened in the past few minutes?", "Which agents WERE jammed?", "Movement trajectory", "Did agent X reach Y?"
+2. **QDRANT TELEMETRY HISTORY** [SECONDARY - HISTORICAL]
+   - Source: Qdrant vector database (logged telemetry)
+   - Returns: Past positions, movement history, trends
+   - Latency: ~100ms
+   - Use for: "What happened in past 5 minutes?", "Movement trajectory", "Did X reach Y?"
    - Request type: "agent_history"
-   - Example: {"type": "agent_history", "agent": "agent1", "limit": 20}
-   - IMPORTANT: Use limit=20-50 for "past few minutes" questions to see recent changes
+   - Example: {"type": "agent_history", "agent": "agent1", "limit": 30}
 
-3. AGENT ERRORS & EVENTS (From PostgreSQL)
-   - Source: PostgreSQL logs
-   - Returns: List of {text: str, metadata: dict, created_at: timestamp, type: "error"|"notification"}
-   - Use for: Understanding problems, jamming incidents, recovery attempts
-   - Request type: "agent_errors"
-   - Example: {"type": "agent_errors", "agent": "agent1", "limit": 5}
+3. **POSTGRESQL LOGS** [TERTIARY - EVENTS & MESSAGES]
+   - Source: PostgreSQL (structured logs)
+   - Returns: Errors, notifications, user/LLM conversation
+   - Use for: "What errors occurred?", "What did I ask before?"
+   - Request type: "agent_errors" or "conversation_history"
 
-4. SEMANTIC TELEMETRY SEARCH (Vector search in Qdrant)
-   - Source: Qdrant vector database
-   - Returns: Relevant telemetry matching semantic query
-   - Use for: Finding specific situations like "jammed agents", "agents near endpoint"
-   - Request type: "telemetry_search"
-   - Example: {"type": "telemetry_search", "query": "agents that were jammed recently", "limit": 30}
+=== DECISION TREE FOR DATA REQUESTS ===
 
-5. MISSION CONTEXT (Static configuration)
-   - Mission Endpoint: (10.0, 10.0)
-   - Simulation Boundaries: X: [-50, 50], Y: [-50, 50]
-   - Agents start near origin (0, 0)
-   - Agents must navigate from origin to endpoint
-   - "jammed: true" = Agent is in GPS denial zone (CURRENTLY JAMMED)
-   - "jammed: false" = Agent has good GPS signal (CURRENTLY CLEAR)
-   - communication_quality < 0.5 = Poor/denied GPS
-   - communication_quality >= 0.5 = Good GPS
+User asks: "Where is agent1?"
+→ Use: live_agent_status (most current)
 
-=== COMMON QUESTIONS & RECOMMENDED DATA ===
+User asks: "What agents are jammed?"
+→ Use: live_agent_status (real-time status)
 
-Q: "Where is agent X?" or "What agents are jammed NOW?"
-→ Request: {"type": "agent_positions", "agents": ["agentX"]} or {"type": "agent_positions", "agents": "all"}
+User asks: "What happened to agent2 in the last few minutes?"
+→ Use: agent_history from Qdrant (historical telemetry)
 
-Q: "What agents WERE jammed in the past few minutes?" or "What happened to agent X recently?"
-→ Request: {"type": "agent_history", "agent": "agentX", "limit": 30}
-→ Then analyze the history to see jamming status changes over time
+User asks: "Has agent3 reached the endpoint?"
+→ Use: live_agent_status + check if position == (10.0, 10.0)
 
-Q: "What agents have reached the endpoint?"
-→ Request: {"type": "agent_positions", "agents": "all"}
-→ Then check which are at (10.0, 10.0)
+User asks: "What errors did agent1 have?"
+→ Use: agent_errors from PostgreSQL
 
-Q: "Show me trajectory of agent X" or "Did agent X move recently?"
-→ Request: {"type": "agent_history", "agent": "agentX", "limit": 20}
-
-Q: "What errors occurred?" or "What happened to agent X?"
-→ Request: [{"type": "agent_history", "agent": "agentX", "limit": 10}, {"type": "agent_errors", "agent": "agentX", "limit": 5}]
-
-=== CRITICAL NOTES ===
-- For "past few minutes" or "recently" questions: ALWAYS use agent_history with limit=20-50
-- For "current" or "now" questions: Use agent_positions
-- Position (10.0, 10.0) = mission endpoint
-- Check ACTUAL data from responses, don't assume or guess
+=== CRITICAL RULES ===
+1. For "current", "now", "status" → ALWAYS use live_agent_status
+2. For "past", "history", "recently" → Use agent_history
+3. Endpoint is at (10.0, 10.0)
+4. Always check actual data, never guess
 """
 
 
-class SimplifiedLLMAgent:
-    """
-    Simplified LLM Agent that gets schema upfront, requests data once.
-    """
+class EnhancedLLMAgent:
+    """LLM Agent with live API access"""
     
     def __init__(self):
         self.ollama_client = get_ollama_client() if LLM_AVAILABLE else None
         self.model_name = get_model_name() if LLM_AVAILABLE else None
+        self.api_url = SIMULATION_API_URL
         
     async def answer_question(self, user_query: str) -> str:
-        """
-        Answer user question with single data request.
-        
-        Args:
-            user_query: User's question
-            
-        Returns:
-            Final answer
-        """
+        """Answer with live data priority"""
         if not LLM_AVAILABLE or not DATA_AVAILABLE:
             return "❌ LLM or data sources not available"
         
         print(f"\n{'='*60}")
         print(f"[LLM_AGENT] Processing: {user_query}")
         
-        # Step 1: Ask LLM what data it needs (with full schema)
+        # Step 1: LLM decides what data it needs
         data_requests = await self._get_data_requests(user_query)
         
         if not data_requests:
-            print(f"[LLM_AGENT] ⚠️  LLM didn't request data, answering directly")
             return await self._answer_without_data(user_query)
         
-        # Step 2: Fetch all requested data
-        print(f"[LLM_AGENT] Fetching {len(data_requests)} data items...")
+        # Step 2: Fetch data (with live API priority)
+        print(f"[LLM_AGENT] Fetching {len(data_requests)} data sources...")
         fetched_data = await self._fetch_requested_data(data_requests)
         
-        # Step 3: LLM constructs final answer with data
-        print(f"[LLM_AGENT] Generating final answer...")
+        # Step 3: Generate answer
         answer = await self._generate_final_answer(user_query, fetched_data)
         
         print(f"[LLM_AGENT] ✓ Answer ready ({len(answer)} chars)")
@@ -149,29 +111,28 @@ class SimplifiedLLMAgent:
         return answer
     
     async def _get_data_requests(self, user_query: str) -> List[Dict[str, Any]]:
-        """Ask LLM what data it needs (given full schema)"""
+        """Ask LLM what data it needs"""
         
-        prompt = f"""{DATA_SCHEMA}
+        prompt = f"""{ENHANCED_DATA_SCHEMA}
 
 USER QUESTION: "{user_query}"
 
-TASK: Based on the question, determine what data you need to answer accurately.
+TASK: Determine what data sources you need to answer accurately.
 
-CRITICAL RULES:
-- For "past few minutes", "recently", "were jammed", "what happened": Use agent_history with limit=20-50
-- For "current", "now", "are jammed": Use agent_positions
-- Request ONLY the data needed for THIS specific question
-- Use "all" for agents if asking about multiple/all agents
+PRIORITY RULES:
+- For "current", "now", "status" → ALWAYS request live_agent_status
+- For "past", "history", "recently" → Request agent_history
+- For "errors" → Request agent_errors
 
-Respond with ONLY a JSON array of data requests (no markdown, no explanation):
+Respond with ONLY a JSON array (no markdown):
 [
-  {{"type": "agent_positions", "agents": "all"}},
-  {{"type": "agent_history", "agent": "agent1", "limit": 30}}
+  {{"type": "live_agent_status", "agents": "all"}},
+  {{"type": "agent_history", "agent": "agent1", "limit": 20}}
 ]
 
-If you can answer without any data (e.g., explaining system concepts), return: []
+If no data needed, return: []
 
-YOUR JSON RESPONSE (array only, no markdown):"""
+YOUR JSON RESPONSE:"""
         
         response = chat_with_retry(
             self.ollama_client,
@@ -180,45 +141,33 @@ YOUR JSON RESPONSE (array only, no markdown):"""
         )
         
         if response is None:
-            print("[LLM_AGENT] ❌ LLM connection error")
             return []
         
         llm_response = response['message']['content'].strip()
-        print(f"[LLM_AGENT] Data request response: {llm_response[:200]}...")
         
         try:
-            # Clean up response
-            json_str = llm_response
-            if json_str.startswith("```"):
-                lines = json_str.split('\n')
-                json_str = '\n'.join([l for l in lines if not l.startswith('```')])
+            # Clean markdown if present
+            if llm_response.startswith("```"):
+                lines = llm_response.split('\n')
+                llm_response = '\n'.join([l for l in lines if not l.startswith('```')])
             
-            data_requests = json.loads(json_str)
+            data_requests = json.loads(llm_response)
             
             if not isinstance(data_requests, list):
-                print(f"[LLM_AGENT] ⚠️  Expected list, got: {type(data_requests)}")
                 return []
             
-            print(f"[LLM_AGENT] Parsed {len(data_requests)} data requests")
+            print(f"[LLM_AGENT] Parsed {len(data_requests)} data requests:")
             for req in data_requests:
-                print(f"[LLM_AGENT]   - {req.get('type')}: {req}")
+                print(f"[LLM_AGENT]   - {req.get('type')}")
             
             return data_requests
             
         except json.JSONDecodeError as e:
-            print(f"[LLM_AGENT] ⚠️  Could not parse data requests: {e}")
-            print(f"[LLM_AGENT] Raw: {llm_response}")
-            import re
-            match = re.search(r'\[.*\]', llm_response, re.DOTALL)
-            if match:
-                try:
-                    return json.loads(match.group(0))
-                except:
-                    pass
+            print(f"[LLM_AGENT] ⚠️ JSON parse error: {e}")
             return []
     
     async def _fetch_requested_data(self, requests: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Fetch all requested data from Qdrant (primary source)"""
+        """Fetch data with LIVE API priority"""
         fetched = {}
         
         for req in requests:
@@ -226,121 +175,140 @@ YOUR JSON RESPONSE (array only, no markdown):"""
             print(f"[LLM_AGENT]   Fetching: {req_type}")
             
             try:
-                if req_type == "agent_positions":
-                    # Get current positions from Qdrant (most recent entry)
+                if req_type == "live_agent_status":
+                    # NEW: Fetch from live API
                     agents = req.get('agents', [])
-                    if agents == "all":
-                        agents = get_known_agent_ids(limit=100)
-                    elif not isinstance(agents, list):
-                        agents = [agents]
-                    
-                    agent_data = {}
-                    for agent_id in agents:
-                        history = get_agent_position_history(agent_id, limit=1)
-                        if history:
-                            current = history[0]
-                            agent_data[agent_id] = {
-                                'position': list(current['position']),
-                                'jammed': current['jammed'],
-                                'communication_quality': current['communication_quality'],
-                                'timestamp': current['timestamp']
-                            }
-                            print(f"[LLM_AGENT]     ✓ {agent_id}: pos={current['position']}, jammed={current['jammed']}")
-                    
-                    fetched['agent_positions'] = agent_data
-                    print(f"[LLM_AGENT]     ✓ Got data for {len(agent_data)} agents")
+                    live_data = await self._fetch_live_api_data(agents)
+                    fetched['live_agent_status'] = live_data
+                    print(f"[LLM_AGENT]     ✓ Got live data for {len(live_data)} agents")
                 
                 elif req_type == "agent_history":
-                    # Get position history from Qdrant
                     agent = req.get('agent')
-                    limit = req.get('limit', 10)
-                    
+                    limit = req.get('limit', 20)
                     history = get_agent_position_history(agent, limit=limit)
                     fetched[f'history_{agent}'] = history
-                    print(f"[LLM_AGENT]     ✓ Got {len(history)} history entries for {agent}")
+                    print(f"[LLM_AGENT]     ✓ Got {len(history)} history entries")
                 
                 elif req_type == "agent_errors":
                     agent = req.get('agent')
                     limit = req.get('limit', 10)
-                    
                     errors = get_agent_errors(agent, limit=limit)
                     fetched[f'errors_{agent}'] = errors
-                    print(f"[LLM_AGENT]     ✓ Got {len(errors)} errors for {agent}")
+                    print(f"[LLM_AGENT]     ✓ Got {len(errors)} errors")
                 
                 elif req_type == "telemetry_search":
                     query = req.get('query', '')
                     limit = req.get('limit', 20)
-                    
                     results = search_telemetry(query, limit=limit)
                     fetched['telemetry_search'] = results
-                    print(f"[LLM_AGENT]     ✓ Got {len(results)} telemetry results")
+                    print(f"[LLM_AGENT]     ✓ Got {len(results)} search results")
                 
             except Exception as e:
                 print(f"[LLM_AGENT]     ✗ Error fetching {req_type}: {e}")
-                import traceback
-                traceback.print_exc()
         
         return fetched
     
+    async def _fetch_live_api_data(self, agents: Any) -> Dict[str, Any]:
+        """
+        NEW: Fetch current state from live Simulation API
+        This is the SOURCE OF TRUTH for current positions
+        """
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.api_url}/agents",
+                    timeout=2.0
+                )
+                
+                if response.status_code != 200:
+                    print(f"[API] ✗ HTTP {response.status_code}")
+                    return {}
+                
+                api_data = response.json().get("agents", {})
+                
+                # Filter if specific agents requested
+                if agents != "all" and isinstance(agents, list):
+                    api_data = {k: v for k, v in api_data.items() if k in agents}
+                
+                # Format for LLM
+                formatted = {}
+                for agent_id, data in api_data.items():
+                    formatted[agent_id] = {
+                        'position': data.get('position', [0, 0]),
+                        'jammed': data.get('jammed', False),
+                        'communication_quality': data.get('communication_quality', 0),
+                        'timestamp': datetime.now().isoformat(),
+                        'source': 'LIVE_API'
+                    }
+                    print(f"[API] ✓ {agent_id}: pos={formatted[agent_id]['position']}, jammed={formatted[agent_id]['jammed']}")
+                
+                return formatted
+                
+        except httpx.TimeoutException:
+            print("[API] ✗ Timeout - is sim_api.py running?")
+            return {}
+        except Exception as e:
+            print(f"[API] ✗ Error: {e}")
+            return {}
+    
     async def _generate_final_answer(self, user_query: str, fetched_data: Dict[str, Any]) -> str:
-        """Generate final answer with fetched data"""
+        """Generate answer with fetched data"""
         
-        # Format data nicely
+        # Format data summary
         data_summary = []
+        
         for key, value in fetched_data.items():
-            if isinstance(value, dict):
-                data_summary.append(f"\n=== {key.upper().replace('_', ' ')} ===")
-                for k, v in value.items():
-                    if isinstance(v, dict):
-                        pos = v.get('position', [0, 0])
-                        jammed = v.get('jammed', False)
-                        comm = v.get('communication_quality', 0)
-                        data_summary.append(
-                            f"{k}: position={pos}, jammed={jammed}, comm_quality={comm:.2f}"
-                        )
-                    else:
-                        data_summary.append(f"{k}: {v}")
-            elif isinstance(value, list):
-                data_summary.append(f"\n=== {key.upper().replace('_', ' ')} ({len(value)} items) ===")
-                for i, item in enumerate(value[:15]):  # Show first 15 items
-                    if isinstance(item, dict):
-                        pos = item.get('position', [0, 0])
-                        jammed = item.get('jammed', False)
-                        ts = item.get('timestamp', 'unknown')
-                        data_summary.append(f"  [{i}] pos={pos}, jammed={jammed}, time={ts}")
-                    else:
-                        data_summary.append(f"  [{i}] {str(item)[:100]}")
-                if len(value) > 15:
-                    data_summary.append(f"  ... and {len(value) - 15} more entries")
+            if key == 'live_agent_status':
+                data_summary.append("\n=== LIVE AGENT STATUS (MOST CURRENT) ===")
+                for agent_id, data in value.items():
+                    pos = data['position']
+                    jammed = "JAMMED" if data['jammed'] else "CLEAR"
+                    comm = data['communication_quality']
+                    data_summary.append(
+                        f"{agent_id}: position=({pos[0]:.2f}, {pos[1]:.2f}), "
+                        f"status={jammed}, comm_quality={comm:.2f}"
+                    )
+            
+            elif key.startswith('history_'):
+                agent = key.replace('history_', '')
+                data_summary.append(f"\n=== HISTORY: {agent} ({len(value)} entries) ===")
+                for i, item in enumerate(value[:10]):  # Show first 10
+                    pos = item.get('position', [0, 0])
+                    jammed = "JAMMED" if item.get('jammed') else "CLEAR"
+                    ts = item.get('timestamp', 'unknown')
+                    data_summary.append(
+                        f"  [{i}] pos=({pos[0]:.2f}, {pos[1]:.2f}), {jammed}, time={ts}"
+                    )
+            
+            elif key.startswith('errors_'):
+                agent = key.replace('errors_', '')
+                data_summary.append(f"\n=== ERRORS: {agent} ({len(value)} errors) ===")
+                for item in value[:5]:
+                    data_summary.append(f"  - {item.get('text', '')[:100]}")
         
         prompt = f"""You are answering a question about a multi-agent GPS simulation.
 
 MISSION CONTEXT:
 - Mission Endpoint: {MISSION_END}
-- Agents must navigate from origin to endpoint
-- Agents at position {MISSION_END} have reached the endpoint
-- "jammed: true" = Agent WAS/IS in GPS denial zone at that timestamp
-- "jammed: false" = Agent WAS/IS clear at that timestamp
-- communication_quality < 0.5 = Poor/denied GPS
-- communication_quality >= 0.5 = Good GPS
+- Boundaries: X: {X_RANGE}, Y: {Y_RANGE}
+- Agents navigate from origin to endpoint
+- Position {MISSION_END} = mission complete
 
 USER QUESTION: "{user_query}"
 
-LIVE DATA RETRIEVED (from running simulation):
+LIVE DATA (fetched from running simulation):
 {"".join(data_summary)}
 
-TASK: Answer the user's question accurately using ONLY the data above.
+TASK: Answer accurately using ONLY the data above.
 
-CRITICAL RULES:
-1. For "past few minutes" questions: Look at the HISTORY data and identify jamming status CHANGES over time
-2. For "current" questions: Look at the POSITIONS data for current status
-3. Check ACTUAL positions - agent at {MISSION_END} = reached endpoint
-4. Check ACTUAL jammed status in the data - don't guess
-5. If history shows jammed=true at any timestamp, that agent WAS jammed at that time
-6. Reference specific agent IDs and their ACTUAL data from above
-7. Be precise - don't guess or assume
+RULES:
+1. Use LIVE_API data for current state (highest priority)
+2. Reference actual agent IDs and their data
+3. Check if position == {MISSION_END} for completion
+4. Be specific with numbers from the data
+5. 2-4 sentences max
 
-YOUR ANSWER (direct, factual, 2-4 sentences):"""
+YOUR ANSWER:"""
         
         response = chat_with_retry(
             self.ollama_client,
@@ -354,18 +322,15 @@ YOUR ANSWER (direct, factual, 2-4 sentences):"""
         return response['message']['content'].strip()
     
     async def _answer_without_data(self, user_query: str) -> str:
-        """Answer questions that don't need data (e.g., system explanations)"""
+        """Answer conceptual questions without data"""
         
         prompt = f"""You are an expert on a multi-agent GPS simulation system.
 
-SYSTEM OVERVIEW:
-{DATA_SCHEMA}
-
 USER QUESTION: "{user_query}"
 
-TASK: Answer the user's question about the system itself (not about current agent status).
+Answer briefly about the system itself (2-3 sentences).
 
-YOUR ANSWER (2-3 sentences):"""
+YOUR ANSWER:"""
         
         response = chat_with_retry(
             self.ollama_client,
@@ -374,31 +339,23 @@ YOUR ANSWER (2-3 sentences):"""
         )
         
         if response is None:
-            return "❌ Error generating answer"
+            return "❌ Error"
         
         return response['message']['content'].strip()
 
 
 # Global instance
-_llm_agent = None
+_enhanced_agent = None
 
-def get_llm_agent() -> SimplifiedLLMAgent:
-    """Get or create global LLM agent"""
-    global _llm_agent
-    if _llm_agent is None:
-        _llm_agent = SimplifiedLLMAgent()
-    return _llm_agent
+def get_enhanced_agent() -> EnhancedLLMAgent:
+    """Get or create enhanced agent"""
+    global _enhanced_agent
+    if _enhanced_agent is None:
+        _enhanced_agent = EnhancedLLMAgent()
+    return _enhanced_agent
 
 
-async def answer_with_llm_agent(user_query: str) -> str:
-    """
-    Answer user query using simplified LLM agent.
-    
-    Args:
-        user_query: User's question
-        
-    Returns:
-        Answer string
-    """
-    agent = get_llm_agent()
+async def answer_with_enhanced_agent(user_query: str) -> str:
+    """Answer using enhanced agent with live API"""
+    agent = get_enhanced_agent()
     return await agent.answer_question(user_query)
