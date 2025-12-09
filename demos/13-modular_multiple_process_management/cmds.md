@@ -17,8 +17,8 @@ cd ~/CARS_sim_2_ollama/demos/13-modular_multiple_process_management && [ -z "$VI
 python main_gui.py
 
 
-tree -I "__pycache__" -I "docs" -I "docs_old" -I "pgdata" -I "qdrant_data" | xclip -selection clipboard
+tree -I "*.md" -I "__pycache__" -I "docs" -I "docs_old" -I "pgdata" -I "qdrant_data" | xclip -selection clipboard
 
-tree -I "__pycache__" -I "docs" -I "docs_old" -I "pgdata" -I "qdrant_data" | iconv -f UTF-8 -t UTF-16LE | clip.exe
+tree -I "*.md" -I "__pycache__" -I "docs" -I "docs_old" -I "pgdata" -I "qdrant_data" | iconv -f UTF-8 -t UTF-16LE | clip.exe
 
 ```
