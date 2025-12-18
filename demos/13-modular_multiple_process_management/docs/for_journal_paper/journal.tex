@@ -1,0 +1,644 @@
+\documentclass[journal]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\hypersetup{bookmarks=false}
+\usepackage[most]{tcolorbox}
+\usepackage{enumitem}
+\usepackage{stfloats}
+\allowdisplaybreaks
+\usepackage[font=footnotesize]{caption}
+\usepackage[font=footnotesize]{subcaption}
+\captionsetup[subfigure]{labelformat=simple,labelsep=period}
+\usepackage{soul}
+\usepackage{color}
+\newcommand{\nrd}[1]{\textcolor{red}{#1}}
+\newcommand{\nbl}[1]{\textcolor{blue}{#1}}
+\newcommand{\ngd}[1]{\textcolor{green}{#1}} 
+\setlength{\abovedisplayskip}{5pt}
+\setlength{\belowdisplayskip}{5pt}
+\setlength{\textfloatsep}{10pt}
+\setlength{\floatsep}{6pt}
+\setlength{\intextsep}{6pt}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\begin{document}
+
+\title{ \nrd{Resilient UAV Swarm Operations in Low-Altitude Wireless Networks: A Dual Multi-Agent System Approach}
+\thanks{This work was supported by the Department of Transportation (DOT) Tier-1 University Transportation Center for Advancing Cybersecurity Research and Education (CYBER-CARE) Year Two, and by the Center of Aerospace Resilience Center (CARS) Faculty Seed Grant No. 4.04.}
+}
+
+\author{
+\IEEEauthorblockN{Sang Xing\IEEEauthorrefmark{1}, Siyao Li\IEEEauthorrefmark{1}, Gatlin Nelson\IEEEauthorrefmark{1}, Thomas Yang\IEEEauthorrefmark{1}, Shuangyang Li \IEEEauthorrefmark{2}, Mingyue Ji \IEEEauthorrefmark{3}}\\
+\IEEEauthorblockA{\IEEEauthorrefmark{1}Department of Electrical Engineering and Computer Science\\
+Embry-Riddle Aeronautical University, Daytona Beach, FL 32114, USA\\
+Email:xings@my.erau.edu, lis14@erau.edu, nelsg10@my.erau.edu, yang482@erau.edu}
+}
+
+% \markboth{IEEE Transactions on Intelligent Transportation Systems, Vol. XX, No. X, XXXX 2024}%
+% {Xing \MakeLowercase{\textit{et al.}}: LLM-Enhanced Dual Multi-Agent System for Resilient UAV Swarms}
+
+\maketitle
+
+\begin{abstract}
+Unmanned Aerial Vehicle (UAV) swarms operating in contested environments face significant challenges from communication degradation, electronic warfare threats, and physical obstacles that can compromise mission success. This paper presents a dual multi-agent system (MASS) architecture that integrates vehicle-level (low-level) agents responsible for immediate, reactive decision-making with supervisory (high-level) agents powered by Large Language Models (LLMs) that provide strategic coordination. The proposed architecture combines a communication-aware gradient-based formation controller with an LLM-guided strategic layer, enabling dynamic optimization of inter-drone connectivity while maintaining effective navigation in adversarial conditions. A priority-based control override mechanism allows seamless transitions between reactive autonomy and strategic LLM interventions based on mission criticality. By processing swarm-wide telemetry, an LLM agent recognizes complex threat patterns and orchestrates coordinated responses that exceed the capabilities of traditional rule-based systems. The LLM agent processes swarm-wide telemetry to recognize complex threat patterns and orchestrate coordinated responses that would be impossible with traditional rule-based systems. Simulation results demonstrate significant performance improvements, with LLM guidance reducing mission completion times from 133.57s to 103.79s (22.3\% improvement) in obstacle-rich environments while maintaining high communication quality ($J_n \approx 0.97$). Under jamming conditions, the system enables recovery from degraded communication levels of approximately 0.91 back to 0.97 through tactical repositioning. The framework is implemented in Swarm Squad, an open-source platform for advancing research in secure and cyber-resilient UAV coordination.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Unmanned aerial vehicle swarms, multi-agent systems, large language models, resilient navigation, formation control, contested environments, cybersecurity, electronic warfare, behavior-based control, communication-aware control
+\end{IEEEkeywords}
+
+\IEEEpeerreviewmaketitle
+
+\section{Introduction}\label{sec1}
+\nrd{Should be rewritten to talk about LAWN.}
+UAV swarm deployment has revolutionized various fields, including environmental monitoring \cite{asadzadeh2022uav}, disaster response \cite{hildmann2019using}, secure transportation \cite{fatemidokht2021efficient}, and tactical operations \cite{baek2018design}. These distributed systems of interconnected drones leverage collective intelligence, enabling collaborative complex task performance and dynamic environment navigation. However, the increasing reliance on drone swarms introduces significant challenges, particularly when operating in contested environments where communication degradation, jamming, and electronic warfare tactics compromise mission success.
+
+Electronic warfare capabilities have evolved significantly, with modern jammers capable of disrupting GPS signals, communication links, and control channels across multiple frequency bands \cite{chamola2021comprehensive}. These threats are particularly acute for swarm systems, where coordinated behavior depends critically on reliable inter-agent communication. The loss of even a few communication links can trigger cascading failures, transforming an organized swarm into a collection of isolated, ineffective units.
+
+The fundamental challenge in contested environments stems from the inherent tension between maintaining robust communication for coordination and achieving mission objectives in the presence of active interference. Traditional approaches to this problem have typically focused on either hardening communication systems against jamming or developing reactive behaviors to avoid interference zones. However, these solutions often prove inadequate when facing sophisticated, adaptive threats that can dynamically adjust their interference patterns based on swarm behavior.
+
+\subsection{Limitations of Current Approaches}
+\nbl{This manuscript is an extension of our previous work submitted to IEEE Access. Ideally, the Access paper will be accepted before we submit this manuscript so that we can cite it.
+}
+\nbl{
+You should:
+\begin{itemize}
+    \item Briefly summarize what was achieved in the previous work.
+    \item Identify the major limitations of that work.
+    \item Discuss whether the previous classical control algorithms can be effectively applied to the 3D low-altitude wireless networks (LAWN) scenario.
+\end{itemize} }
+\nbl{The ideal approach is to show that we can apply the algorithm that performed best in our previous study to the 3D LAWN setting but that it still suffers from significant drawbacks. To address these limitations, we propose the new method integrating LLM into the UAV swarm, and we aim to demonstrate that this new method outperforms the previous one.
+If the new method does not outperform the baseline, we still need to identify and include other algorithms that are more suitable for this scenario to serve as benchmarks. Or maybe adjust the simulation setup. We cannot simply evaluate the LLM-integrated algorithm in isolation as this would not be convincing to reviewers. }
+Prior research has explored various aspects of UAV swarm resilience, including jamming detection and avoidance \cite{peng2019anti,wu2021uav}, adaptive formation control \cite{ouyang2023formation}, and robust path planning \cite{aggarwal2020path}. However, these critical challenges are often addressed in isolation, leading to several fundamental limitations that compromise overall system effectiveness.
+
+Many formation control algorithms assume perfect or near-perfect communication channels, treating connectivity as a binary state rather than a continuous variable affected by distance, interference, and environmental factors \cite{Saber}. This oversimplification leads to brittle systems that fail catastrophically when communication quality degrades below assumed thresholds. Traditional jamming avoidance techniques rely primarily on reactive behaviors triggered by signal strength measurements or packet loss rates \cite{Li}, but while these approaches can detect and respond to interference, they lack the strategic foresight needed to anticipate threats or plan optimal escape routes that maintain swarm cohesion.
+
+Rule-based control systems, while computationally efficient, struggle to handle the complexity and unpredictability of contested environments. The combinatorial explosion of possible scenarios makes it impractical to pre-program responses for every contingency, resulting in systems that perform well in expected conditions but fail when confronted with novel threats \cite{javed2024state}. Furthermore, current autonomous systems operate primarily at the signal and control level, without higher-level understanding of mission context, threat patterns, or strategic objectives. This limitation prevents them from making nuanced decisions that balance multiple competing objectives or adapt their behavior based on evolving mission priorities.
+
+\subsection{The Promise of Large Language Models}
+
+Recent advances in Large Language Models (LLMs) have demonstrated remarkable capabilities in understanding complex scenarios, reasoning about multi-faceted problems, and generating adaptive strategies \cite{javaid2024large}. These models, trained on vast corpora of text data, possess emergent abilities that extend far beyond simple pattern matching or rule application. 
+
+LLMs excel at contextual reasoning, but their effectiveness depends on being supplied with relevant and well-structured situational information. When provided with appropriate context, they can integrate data from multiple sources and identify relationships between seemingly disparate elements. This capability enables them to comprehend complex operational scenarios involving multiple threats, objectives, and constraints. Unlike reactive systems, LLMs can engage in multi-step strategic reasoning, considering long-term consequences and trade-offs. This strategic thinking is crucial for navigation in contested environments where immediate optimal actions may lead to poor long-term outcomes.
+
+Furthermore, LLMs provide an intuitive natural language interface for human operators to communicate high-level objectives, receive status updates, and understand system decisions. This transparency is essential for building trust in autonomous systems and enabling effective human-machine teaming. Through in-context learning and prompt engineering, LLMs can adapt their behavior based on new information without requiring retraining, allowing them to respond to novel threats or changing mission parameters dynamically.
+
+Recent research has begun exploring LLM applications in robotics and autonomous systems. Yu et al. \cite{yu2024llmstp} demonstrated LLM-based mission planning for single UAVs, showing improved adaptability compared to traditional planners. Piggott et al. \cite{piggott2023net} explored human-UAV interaction through natural language, enabling more intuitive control interfaces. Xiang et al. \cite{xiang2024real} investigated real-time tactical decision support, demonstrating the potential for LLMs to enhance situational awareness. However, these works primarily focus on single-agent systems or specific aspects of UAV operation, leaving the integration of LLMs with multi-agent swarm control largely unexplored.
+
+\subsection{Research Gap and Motivation}
+
+Despite the growing interest in both UAV swarm technologies and LLM applications, there remains a significant gap in research addressing their synergistic integration for operation in contested environments. Most existing formation control algorithms fail to explicitly model and optimize communication quality as a primary objective, particularly under degraded conditions. Current approaches typically treat communication as a fixed constraint rather than a dynamic variable that can be actively managed.
+
+The integration of high-level strategic reasoning with low-level reactive control remains an open challenge, requiring careful balance between autonomy and oversight. Operating in contested environments demands rapid response to threats while maintaining strategic coherence, a challenge that neither pure reactive systems nor slow deliberative planners adequately address. Additionally, many proposed solutions are evaluated in simplified environments that fail to capture the complexity of real-world electronic warfare scenarios, limiting their practical applicability.
+
+\subsection{Contributions}
+
+This work directly addresses these challenges by introducing a novel dual multi-agent system (MASS) architecture that fundamentally reimagines UAV swarm control for contested environments. Our key contributions include:
+
+\textbf{1) Communication-Aware Gradient Controller:} We develop a novel formation controller that explicitly optimizes inter-drone communication quality using a sophisticated channel model that accounts for both near-field and far-field propagation effects. Unlike traditional approaches that treat communication as a constraint, our method actively shapes the swarm formation to maximize connectivity while achieving mission objectives.
+
+\textbf{2) LLM-Guided Strategic Layer:} We introduce a high-level control layer powered by LLMs that provides strategic oversight and intervention capabilities. This layer processes swarm-wide telemetry, identifies emerging threats, and generates tactical guidance that complements reactive behaviors. The LLM agent can recognize complex patterns in jamming attacks and orchestrate coordinated responses that would be impossible with rule-based systems.
+
+\textbf{3) Seamless Integration Mechanism:} We develop a priority-based control override system that enables smooth transitions between autonomous operation and LLM intervention. This mechanism ensures that strategic decisions are implemented without disrupting ongoing reactive behaviors, maintaining operational continuity even during critical interventions.
+
+\textbf{4) Comprehensive Evaluation Framework:} We validate our approach through extensive simulations in realistic scenarios involving multiple obstacles and jamming fields. Our results demonstrate significant improvements in mission completion times, with LLM guidance reducing completion time from 133.57s to 103.79s (22.3\% improvement) in obstacle navigation scenarios while maintaining high communication quality ($J_n \approx 0.97$).
+
+\textbf{5) Open-Source Platform:} We release Swarm Squad, an open-source simulation and development platform that enables researchers to explore LLM-enhanced swarm control. This platform includes realistic communication models, configurable jamming scenarios, and interfaces for integrating various LLM backends.
+
+The remainder of the paper is organized as follows: Section~\ref{sec:related} provides a review of related work in UAV swarm control, jamming mitigation, and LLM applications. Section~\ref{sec2} presents our system model and mathematical framework. Section~\ref{sec3} details the communication-aware formation controller. Section~\ref{sec4} describes the behavior-based navigation system. Section~\ref{sec5} explains the LLM integration architecture. Section~\ref{sec6} presents simulation results and analysis. Section~\ref{sec7} discusses limitations and future directions. Finally, Section~\ref{sec8} concludes the paper.
+
+\section{Related Work}\label{sec:related}
+\nrd{As we did in the IEEE Access paper, this Section should be integrated into Introduction Section. But the content should not be duplicated. }
+This section reviews existing literature on UAV swarm control, jamming mitigation techniques, and recent advances in LLM applications for autonomous systems.
+
+\subsection{UAV Swarm Formation Control}
+
+Formation control has been a fundamental research area in multi-robot systems. Traditional approaches include consensus-based methods \cite{Saber}, communication-aware strategies \cite{Li}, and behavior-based control techniques. Recent work by Li et al. \cite{Li} introduced communication-aware formation control that explicitly models channel quality in the control law. However, their approach primarily focuses on maintaining connectivity rather than optimizing it under adversarial conditions. Ouyang et al. \cite{ouyang2023formation} provided a comprehensive review of formation control methods for unmanned aerial vehicle swarms, highlighting the need for more robust approaches in contested environments.
+
+\subsection{Jamming Detection and Mitigation}
+
+Electronic warfare threats to UAV systems have motivated extensive research in jamming detection and countermeasures. Peng et al. \cite{peng2019anti} explored anti-jamming communications using reinforcement learning approaches. Wu et al. \cite{wu2021uav} investigated UAV swarm communication under malicious jamming, proposing joint trajectory and clustering design methods. However, most existing approaches are predominantly reactive, lacking the strategic foresight needed to anticipate and preempt threats.
+
+\subsection{LLM Applications in Robotics and UAV Systems}
+
+The integration of Large Language Models with robotic and UAV systems represents a rapidly evolving research frontier. Yu et al. \cite{yu2024llmstp} demonstrated LLM-based mission planning for UAV swarms, showing improved adaptability compared to traditional planners. Piggott et al. \cite{piggott2023net} explored human-UAV interaction through natural language interfaces, enabling more intuitive control. Xiang et al. \cite{xiang2024real} investigated real-time tactical decision support using fine-tuned language models for reinforcement learning applications. Javaid et al. \cite{javaid2024large} provided an overview of large language models for UAVs, discussing current state and future pathways.
+
+However, most existing work focuses on single-agent systems or assumes reliable communication infrastructure. The application of LLMs to swarm systems operating in contested environments remains largely unexplored.
+
+\subsection{Research Gaps}
+
+Despite extensive research in individual areas, several critical gaps remain that limit the effectiveness of current approaches. Existing formation control algorithms rarely model communication quality as a primary objective, particularly under jamming conditions, often treating connectivity as a binary state rather than acknowledging the continuous degradation that occurs in real-world scenarios. Current jamming mitigation techniques are predominantly reactive, lacking strategic foresight to anticipate threats and plan coordinated responses that maintain swarm cohesion.
+
+While LLMs show promise for individual UAVs, their integration with multi-agent swarm control under communication constraints remains underexplored. The challenge lies not only in leveraging LLM capabilities but also in addressing the computational and latency requirements in real-time distributed systems. Furthermore, many proposed solutions are evaluated in simplified environments that fail to capture the complexity of real-world electronic warfare scenarios, including adaptive jamming, partial information availability, and dynamic threat landscapes.
+
+Our work addresses these gaps by proposing a comprehensive architecture that integrates communication-aware formation control with LLM-guided strategic planning, validated through realistic simulations that model complex jamming scenarios.
+
+\section{System Model}\label{sec:sys-model}
+\nrd{Our work proposes a dual multi-agent system (MASS) architecture specifically designed as a resilient instantiation of a LAWN. The LAWN paradigm describes a reconfigurable, three-dimensional (3D) network that integrates connectivity, sensing, control, and computing to support aerial platforms operating below 3000 meters. Our architecture is tailored for UAV swarm operations in contested environments, where mission success is challenged by communication degradation and dynamic threats. The proposed system consists of a swarm of $N$ UAVs, denoted by the set $\mathcal V = \{ 1, 2, \cdots, N\}$, operating in a 3D Cartesian space. The architecture is structured into two interconnected control layers that map directly onto the functional planes of a LAWN.}
+
+\subsection{LAWN Functional Plane Mapping}
+\nrd{ Our dual MASS architecture realizes the key functional planes of a LAWN as follows.} 
+
+\nrd{The \emph{control plane} is responsible for safe and coordinated flight, demanding ultra-reliable, low-latency communication (e.g., $< 10$ms latency) for stable maneuvering. In our architecture, this is implemented hierarchically:}
+\st{The architecture has two interconnected multi-agent layers: low-level vehicle agents and a high-level LLM agent.}
+
+\begin{enumerate}
+    \item Low-level Vehicle Agents: \nrd{Each UAV is an autonomous agent with onboard processors executing reactive controllers for immediate decision-making (e.g., formation keeping, obstacle avoidance).} \st{UAVs with reactive control for formation and obstacle avoidance.}
+    \item High-level LLM Agent: \nrd{A centralized LLM agent provides strategic guidance and mission-level coordination. It can issue override commands to adapt the swarm's collective behavior to complex threats.} \st{A strategic entity for mission guidance from vehicular data, capable of overriding low-level controls.}
+\end{enumerate}
+
+\nrd{The \emph{sensing plane} enables real-time environmental awareness. The swarm collectively performs sensing by gathering and sharing telemetry data, including agent position, velocity, and orientation. Crucially, it also senses the radio frequency (RF) environment by monitoring inter-agent communication quality, which is vital for detecting jamming and navigating degraded zones. This swarm-wide data is aggregated and processed by the LLM agent to build a comprehensive situational understanding.}
+
+\nbl{Depend on your needs.} \nrd{ The \emph{data plane} manages the transmission of mission-specific data and control signals. It comprises two primary link types: 
+\begin{enumerate}
+    \item Drone-to-Drone (D2D) Links: Used for exchanging local state information between neighboring UAVs to support low-level formation control.
+    \item Drone-to-Ground (D2G) and Ground-to-Drone (G2D) Links: Facilitate communication between the swarm and the centralized LLM agent, which may be hosted on a ground station or an edge server. These links carry aggregated telemetry (D2G) and strategic commands (G2D).
+\end{enumerate}
+}
+
+\nrd{The \emph{auxiliary computing plane} provides the necessary computational resources.  Our architecture employs a hierarchical computing model: time-critical reactive tasks are executed on onboard processors on each UAV, while computationally intensive strategic reasoning is handled by the centralized LLM agent, which leverages more powerful ground or edge-based resources. }
+
+
+\st{This layered approach ensures redundant control and operational integrity despite degraded communication, critical for secure transport monitoring. The LLM acts as the high-level controller, while combined formation and behavior controllers form the low-level control, enabling rapid local responses with strategic global oversight.}
+
+\subsection{Agent Kinematics and Swarm Topology}
+\st{Specifically, we model} Each UAV $i\in \mathcal V$ is modeled  \st{in the swarm} as a single-integrator system, \nrd{where its state is defined by its position $q_i(t) \in \mathbb{R}^3$. The agent's dynamics are given by } \st{with dynamics:}
+\begin{equation}
+    \dot{q}_{i}(t) = u_{i}(t), i = 1, 2, \dots, n, 
+     \label{eq:system_model}
+\end{equation}
+where \st{$q_{i}$ represents position,} $u_{i} \in \mathbb{R}^3$ is the \st{denotes} control input (velocity vector) for agent $i$ at time $t$. \st{and $\dot{q}_i$ represents velocity.}
+The swarm's \nrd{communication topology is represented as a time-varying directed graph} \st{modeled as a graph } \nrd{ $G = (\mathcal{V}, \mathcal{E})$ where $\mathcal V$ is the set of UAVs and $\mathcal E_t \subseteq \mathcal V \times \mathcal V$ is the set of active D2D communication links at time $t$. A link $(j, i) \in \mathcal E_t$ exists if agent $i$ can successfully receive signals from agent $j$. This topology is dynamic, as links can be established or lost due to agent mobility, environmental factors, and adversarial jamming. The set of neighbors for agent $i$ is defined as $N_i(t) = \{ j \in \mathcal V | (j, i) \in \mathcal E_t\}$. } \st{vertices $\mathcal{V}$ represent drones and edges $\mathcal{E}$ represent communication links. Drone $i$'s neighbors $N_{i} = \{j \in \mathcal{V} : (i, j) \in \mathcal{E}\}$ can directly communicate with it, forming the basis for distributed control algorithms.}
+
+
+\subsection{Communication and Channel Model}
+\nrd{The reliability of D2D links is a function of the complex 3D environment in which the swarm operates. To capture this, we adopt a channel model that explicitly incorporates the elevation angle between UAVs and the probabilistic nature of the line-of-sight (LoS) link, which are dominant factors in low-altitude communications.}
+
+\nrd{For any two UAVs, $i$ and $j$, with 3D positions $q_i = (x_i, y_i, z_i)$ and $q_j = (x_j, y_j, z_j)$, the horizontal distance is 
+\begin{align}
+r_{h,ij} = \sqrt{(x_i - x_j)^2 + (y_i - y_j)^2}
+\end{align}
+and the vertical separation is $\Delta z_{ij} = |z_i -z_j|$. The elevation angle $\theta_{ij}$ of UAV $j$ as seen from UAV $i$ is 
+\begin{align}
+\theta_{ij} = arctan \left( \frac{\Delta z_{ij}}{r_{h,ij}}\right).
+\end{align}
+This angle is a key determinant of channel quality, as higher elevation angles typically increase the likelihood of a clear LoS path.
+In low-altitude environments, especially urban ones, the LoS path may be intermittently blocked by obstacles. For the large scale channel attenuation, we consider the probabilistic LOS model as in \cite{2016Mozaffari,2018Azari,2018Zhu}, adopting the elevation-angle dependent path loss component given by
+\begin{align}
+    P_\text{LoS}(\theta_{ij}) = \frac{1}{1+ w_1 \exp(-w_2 (\theta_{ij} -w_1))}
+\end{align}
+where $w_1$ and $w_2$ are environment-specific parameters that can be obtained from empirical measurements. The probability of a non-line-of-sight (NLoS) connection is simply
+\begin{align}
+    P_\text{NLoS}(\theta_{ij}) = 1- P_\text{LoS}(\theta_{ij}).
+\end{align} }
+
+\nrd{
+ We define the communication quality function $\phi$ to account for these two states. The path loss exponent differs significantly between LoS and NLoS conditions, denoted as $v_\text{LoS}$ and $v_\text{NLoS}$ respectively (typically $v_\text{LoS} =2$ and $v_\text{NLoS} >2$).  The overall interaction model now becomes an expected communication quality, averaging over the LoS and NLoS possibilities:  %separated by distance $r_{ij} = \| q_i - q_j\|$, using an interaction function $\phi(r_{ij})$ that captures both near-field interference and far-field attenuation
+ \begin{align}
+       \phi(q_i, q_j) =  P_\text{LoS}(\theta_{ij})\phi_\text{LoS}(r_{ij}) + P_\text{NLoS}(\theta_{ij})\phi_\text{NLoS}(r_{ij}) 
+ \end{align}
+ where $r_{ij} = \| q_i - q_j\|$ is the 3D Euclidean distance, and the state-dependent quality functions are
+\begin{align}
+  \phi_\text{LoS}(r_{ij}) =  \frac{r_{ij}}{\sqrt{r_{ij}^{2} + r_{0}^{2}}} \cdot \exp\left(-\beta\left(\frac{r_{ij}}{r_{0}}\right)^{v_\text{LoS}}\right) \label{eq:gij_and_aij-LoS},
+  \\
+    \phi_\text{NLoS}(r_{ij}) =  \frac{r_{ij}}{\sqrt{r_{ij}^{2} + r_{0}^{2}}} \cdot \exp\left(-\beta\left(\frac{r_{ij}}{r_{0}}\right)^{v_\text{NLoS}}\right), \label{eq:gij_and_aij-NLoS}
+\end{align}
+where $r_0$ is a reference distance and $\beta$ is a parameter related to antenna characteristics and data rate requirements. %This practical model provides a direct link between physical spacing and communication performance. While this model is effective for controller design, it is recognized that low-altitude air-to-ground (AG) and air-to-air (AA) channels are often characterized by more complex phenomena, such as Rician fading with elevation-angle dependent K-factors. The path loss exponent $v$ can also vary significantly, with empirical measurements showing values less than the free-space exponent of 2 in some scenarios due to constructive multipath reflections.
+}
+\nbl{Maybe it is okay to use the metric in \eqref{eq:gij_and_aij-LoS} and \eqref{eq:gij_and_aij-NLoS} instead of SINR. We can say that this is an extension of the work submitted to IEEE Access to 3D environment/LAWN. The limitations we mentioned in Access should be addressed in this work.}
+\subsection{Contested Environment Model}
+\nrd{The operational environment contains threats that actively challenge mission success. We model two primary types
+\begin{enumerate}
+    \item Physical Obstacles: The environment contains a set of static, impassable obstacles $\mathcal O_k$, defined as geometric volumns in $\mathbb{R}^3$ that the UAVs must navigate around.
+    \item Electronic Warfare (Jamming): We model jamming sources as spatial zones $\mathcal J_m$ that degrade communication quality. The effect of jamming is modeled as a reduction in the signal-to-interference-plus-noise ratio (SINR) for any agent operating within the jamming zone. This degradation directly impacts our 3D-aware communication quality function $\phi(q_{i}, q_{j})$. For an agent $i$ located within a jamming field, its ability to transmit and receive is degraded by a factor $D_{\text{final}_i} \in [ D_\text{min}, 1]$, which is a  function of its penetration depth into the jamming field. The effective communication quality between two agents $i$ and $j$ is thus modeled as 
+    \begin{align}
+        \phi_{ij}^{\prime} = \phi(q_i, q_{j}) \cdot D_{\text{final}_i} \cdot D_{\text{final}_j}.
+    \end{align}
+    A communication link $(j, i) \in \mathcal E_t$ is considered active only if $\phi_{ij}^{\prime} \geq P_T$, where $P_T$ is a predefined link quality threshold. This model creates a dynamic communication topology that responds realistically to both the 3D geometry of the swarm and the presence of jamming.
+\end{enumerate}
+This comprehensive system model establishes the foundation for the dual-layer control architecture detailed in the subsequent sections, ensuring that our approach is well-grounded in the principles of LAWN and addresses the specific challenges of contested operations.
+}
+
+\nbl{Please check if the original objective should be updated to reflect the new system model.} The unified control architecture integrates formation and movement behaviors. Final low-level control $u_i$ combines $\mathcal{G}_i$ (formation controller) and $\mathcal{M}_i$ (movement controller):
+\begin{equation}
+    \dot{q}_{i} = u_{i} = \mathcal{G}_{i} + \mathcal{M}_{i}, \label{eq:ui_final}
+\end{equation}
+where $\mathcal{G}_{i}$ maintains cohesion and optimizes communication, and $\mathcal{M}_{i}$ enables destination-seeking and obstacle handling. This unified control can be influenced or overridden by the LLM agent for strategic intervention.
+The LLM agent's primary objective is to maximize mission success by optimizing swarm connectivity and navigation efficiency under adversarial conditions. It aims to maintain average communication quality $J_n$ defined in \cite{10500200} above threshold $P_T$ and minimize mission time $T_{\text{mission}}$, balancing $\max(J_n, \min(T_{\text{mission}}))$. 
+
+\section{Communication-Aware Formation Controller}\label{sec3}
+
+\st{This section presents our communication-aware gradient-based formation controller that explicitly models and optimizes inter-drone communication quality.}
+
+\nrd{This section details the design of the low-level, vehicle-centric formation controller, $\mathcal G_i$. This controller is responsible for maintaining swarm cohesion and optimizing inter-agent connectivity by leveraging the 3D communication and probabilistic channel model established in Section~\ref{sec:sys-model}. Its design is fully decentralized, computationally efficient, and directly couples the control action to the objective of maximizing 3D-aware communication quality. }
+
+ \subsection{Communication Model} \nrd{This whole subsection should be removed.}
+Appropriate inter-agent spacing is vital for formation control, as close proximity can cause interference and excessive distance degrades signal strength. To address this, we adopt our prior communication model \cite{10500200}, capturing near-field propagation and far-field reception to define an interaction model $\phi(r_{ij})$. This model quantifies communication link quality between drones $i$ and $j$ based on their distance $r_{ij}$. The  near-field propagation factor, $g_{ij}$, and the far-field reception probability, $a_{ij}$, are defined as:
+\begin{align} 
+g_{ij} = \frac{r_{ij}}{\sqrt{r_{ij}^{2} + r_{0}^{2}}}, \quad
+a_{ij} = \exp\left(-\beta\left(\frac{r_{ij}}{r_{0}}\right)^{v}\right), \label{eq:gij_and_aij}
+\end{align}
+where $\beta = \alpha \left(2^{\delta} - 1\right)$,  $\alpha$  relates to the antenna characteristics, $\delta$ represents the desired data rate, $v$ is the path loss exponent, and $r_{0}$ is the reference distance. The overall interaction model $\phi(r_{ij})$ is then given by the product of these two factors:
+\begin{align} 
+\phi(r_{ij}) = g_{ij} \cdot a_{ij} = \frac{r_{ij}}{\sqrt{r_{ij}^{2} + r_{0}^{2}}} \cdot \exp\left(-\beta\left(\frac{r_{ij}}{r_{0}}\right)^{v}\right). \label{eq:phi_interaction_model}
+\end{align}
+In rigid formation, inter-drone distances are constant. Drones measure neighbors' relative positions (${\vec{q}}_{ij} = q_{i} - q_{j}$) and distance:
+\begin{equation*}
+    r_{ij} = \|q_{i} - q_{j}\| = \sqrt{(x_{i} - x_{j})^{2} + (y_{i} - y_{j})^{2}}. %\label{eq:rij}
+\end{equation*}
+Communication range $R$ defines the neighbor set $N_{i} = \{j \in \mathcal{V} \mid r_{ij} \leq R\}$, essential for distributed control. 
+
+\subsection{Formation Control via Gradient Optimization}
+\nrd{The core of the formation controller is a gradient-based approach that drives the swarm towards a configuration that maximizes the total communication quality. This methodology is chosen because gradient ascent on a quality function provides a natural, decentralized way to drive a multi-agent system toward a desirable state.}
+\st{Formation control, using the $\phi(r_{ij})$ model, employs a gradient-based approach to optimize inter-drone communication while maintaining desired geometry. A pairwise potential function $\psi_{t}(r_{ij})$, minimal at target distance $r_{\alpha}$, uses the interaction model to balance formation geometry and communication.
+The gradient controller $\mathcal{G}_{i}$ for drone $i$ is formulated as:}
+\nrd{The control input $\mathcal{G}_{i}$
+for UAV $i$ is formulated as a gradient ascent on the swarm's total communication potential, which is the sum of all its local link qualities $\phi(q_i, q_{j})$. The controller moves each agent in the direction in 3D space that most rapidly increases this sum:}
+\begin{equation}
+    \mathcal{G}_{i} = k_f\nabla_{q_{i}} \Big[\sum_{j \in N_{i}} \phi_{t}(q_i, q_j)\Big] 
+    \label{eq:ui_gradient_controller}
+\end{equation}
+where $k_f$ is a positive gain constant, \st{$N_{i}$ represents neighbors of drone $i$ based on reception probability threshold $P_T$,} \nrd{and $\nabla_{q_i}$ is the gradient with respect to the 3D position vector $q_i$.
+Moreover, an agent $j$ is considered a neighbor of agent $i$  if and only if
+\begin{align}
+    N_i= \{j  \in \mathcal V| \phi^{\prime} (q_i, q_j)\geq P_T \},
+\end{align}
+which ensures that the control law in \eqref{eq:ui_gradient_controller} only considers links that are currently viable in the jammed environment, allowing the swarm to adapt its formation and maintain cohesion even under electronic attack.}
+
+\nrd{
+This gradient calculation inherently considers the effects of changes in both horizontal distance and vertical separation (altitude), as both influence the elevation angle $\theta_{ij}$ and thus the LoS probability and overall link quality.}\st{$\varphi_{r_{ij}}$ is the derivative of the potential function, and $e_{ij}$ is the unit vector from drone $j$ to $i$. This controller maximizes overall communication quality (via $\phi(r_{ij})$) while maintaining formation cohesion.}
+
+\subsection{Communication Quality Metric}
+
+For performance evaluation, we use the standard average communication quality metric $J_n$ for the swarm, as commonly employed in the literature \cite{10500200}:
+\begin{equation}
+J_n = \frac{1}{|E|} \sum_{(i,j) \in E} \phi(r_{ij})
+\end{equation} \nrd{What does the subscript $n$ represent?}
+where $|E|$ denotes the number of communication links in the swarm. This metric provides a normalized measure of overall swarm connectivity, with values ranging from 0 (no connectivity) to 1 (perfect connectivity). Our controller aims to maintain $J_n$ above the threshold $P_T = 0.94$ for reliable swarm operations.
+\nrd{Please carefully review the new system model and update the remaining (sub)sections below.}
+\subsection{Jamming-Induced Communication Degradation}
+While $\phi(r_{ij})$ represents ideal conditions, jamming can degrade communication in contested environments, affecting controller effectiveness. We model the impact of low-power jamming on inter-agent communication. Agent $i$'s communication in a low-power jamming field degrades with its penetration depth. The jamming radius is $r_{\mathrm{jam}} =\kappa_J r_{\mathrm{obs}}$, where $r_{\mathrm{obs}}$ is the physical radius of the jamming source and $\kappa_J$ a scaling factor. For simulations, $\kappa_J = 2.0$ models realistic jamming influence beyond the physical source boundary. The penetration depth $d_{\mathrm{pen}_i}$ of agent $i$ into the jamming source is computed as:
+\begin{equation*}
+    d_{\mathrm{pen}_i} = 1 - \max\left(0, \frac{d_{\mathrm{c}_i} - r_{\mathrm{obs}}}{r_{\mathrm{jam}} - r_{\mathrm{obs}}}\right), %\label{eq:penetration_depth}
+\end{equation*}
+where $d_{\mathrm{c}_i}$ is the distance from agent $i$ to the center of the jamming source.
+The resulting degradation factor $D_{\mathrm{final}_i}$ for agent $i$'s communication quality is then given by:
+\begin{equation*}
+    D_{\mathrm{final}_i} = \max\left(D_{\mathrm{min}}, D_{\mathrm{base}} + (1 - D_{\mathrm{base}})(1 - d_{\mathrm{pen}_i})\right), %\label{eq:degradation_factor}
+\end{equation*}
+where $D_{\mathrm{base}}$ $\in[0,1]$ is the base degradation factor at the edge of the jamming field, and $D_{\mathrm{min}}$ is a lower bound that ensures communication is not entirely loss. 
+
+Original quality $Q_{\mathrm{orig}_{ij}} = \phi(r_{ij})$ is scaled to $Q_{\mathrm{degraded}_{ij}} = Q_{\mathrm{orig}_{ij}} \times D_{\mathrm{final}_i}$. If agent $j$ is also jammed, $D_{\mathrm{final}_j}$ is also applied: $Q_{\mathrm{degraded}_{ij}} = Q_{\mathrm{orig}_{ij}} \times D_{\mathrm{final}_i} \times  D_{\mathrm{final}_j}$. This degraded quality impacts controller neighbor selection and optimization.
+
+Under jamming conditions, the effective communication range may vary dynamically. Our controller adapts to these changes through dynamic neighbor selection based on the reception probability threshold $P_T$. An agent $j$ is considered a neighbor of agent $i$ if:
+
+\begin{equation}
+\phi(r_{ij}) \cdot D_{\text{final}_i} \cdot D_{\text{final}_j} \geq P_T
+\end{equation}
+
+This adaptive mechanism ensures that the formation controller responds appropriately to communication degradation, maintaining connectivity where possible while allowing graceful degradation under severe jamming.
+
+\section{Behavior-Based Navigation System}\label{sec4}
+
+\nbl{As we did in Access, the problem should be well defined as an optimization problem. The current version is a little messy. I have no clue what you want to achieve.}
+This section presents the behavior-based movement controller that complements the formation controller to enable robust swarm navigation.
+
+\subsection{Movement Control Framework}
+
+Our navigation framework ensures robust operation in contested environments by combining reactive behavior-based control with LLM guidance. The behavior-based movement controller uses reactive behaviors for efficient navigation and obstacle avoidance. It operates independently of direct jamming perception; jamming affects strategy via the communication degradation model and LLM guidance. The system incorporates 3 primary behaviors.
+
+\begin{table}[t]
+  \caption{Movement Controller Parameters and Values}
+  \label{tbl:movement_params}
+  \centering
+  \begin{tabular}{|c|c|l|}
+    \hline
+    \textbf{Symbol} & \textbf{Value} & \textbf{Description} \\
+    \hline
+    $a_m$ & 1.0 & Magnitude of destination seeking force \\
+    $b_m$ & 1.0 & Distance threshold for full attraction \\
+    $a_o$ & 3.0 & Magnitude of obstacle avoidance force \\
+    $b_o$ & 6.0 & Range of obstacle influence \\
+    $a_f$ & 2.0 & Magnitude of wall following force \\
+    $d_f$ & 10.0 & Desired distance from wall \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\subsection{Behavior Specifications}
+
+\textit{1. Move to Destination Behavior:} This behavior directs agents toward a specified destination. The destination vector, $V_{\mathrm{move\_to\_destination}}$, is defined as:
+
+\begin{equation}
+  \begin{split}
+  V_{\mathrm{move\_to\_destination}} &= \frac{1}{\sqrt{(x_{\mathrm{dest}}-x_{i})^{2}+(y_{\mathrm{dest}}-y_{i})^{2}}} \\
+  &\quad \times \left[ \begin{array}{c}
+  x_{\mathrm{dest}}-x_{i}\\
+  y_{\mathrm{dest}}-y_{i}
+  \end{array} \right]
+  \end{split}, \label{eq:V_move_to_destination}
+\end{equation}
+where $(x_i, y_i)$ represents the agent's current position and $(x_{\mathrm{dest}}, y_{\mathrm{dest}})$ are the destination coordinates. Scaling $f_1(d_{\mathrm{m}})$ applies based on distance $d_{\mathrm{m}}$ to the destination:
+\begin{equation}
+    f_1(d_{\mathrm{m}}) = 
+    \begin{cases}
+    a_m, & d_{\mathrm{m}} > b_m \\
+    a_m \frac{d_{\mathrm{m}}}{b_m}, & 0 \leq d_{\mathrm{m}} \leq b_m
+    \end{cases}, \label{eq:f1_scaling}
+\end{equation}
+moderating seeking force near the target.
+
+\textit{2. Obstacle Avoidance Behavior:} Drones approaching an obstacle implement avoidance, typically by turning perpendicularly. The obstacle avoidance vector $V_{\mathrm{obstacle\_avoidance}}$ is:
+
+\begin{equation}
+    \begin{split}
+    V_{\mathrm{obstacle\_avoidance}} &= \frac{1}{\sqrt{\left(x_{\mathrm{obs}}-x_i\right)^2+\left(y_{\mathrm{obs}}-y_i\right)^2}} \\
+    &\quad \times \begin{bmatrix} 
+    \pm\left(y_{\mathrm{obs}}-y_i\right) \\
+    \mp\left(x_{\mathrm{obs}}-x_i\right)
+    \end{bmatrix}. \label{eq:V2}
+    \end{split}
+\end{equation}
+The $\pm$ sign determines turning direction. Scaling $f_2(d_{\mathrm{obs}})$ uses an exponential term for aggressive close-range avoidance and an inverse-distance term: 
+\begin{equation}
+    f_2(d_{\mathrm{obs}}) = a_o \cdot e^{-0.3(d_{\mathrm{obs}}-r_{\mathrm{obs}})} \left(1 + \frac{1}{d_{\mathrm{obs}}-r_{\mathrm{obs}}+0.1}\right), \label{eq:f2_scaling}
+\end{equation}
+where $d_{\mathrm{obs}}$ is distance from agent to obstacle center, and $a_o$ is from Table \ref{tbl:movement_params}. This function is active within the obstacle's influence range ($r_{\mathrm{obs}} + b_o$).
+
+\textit{3. Edge-Following Behavior:} For large obstacles where simple avoidance is insufficient, drones use edge-following. The edge-following behavior uses the wall normal vector $\mathbf{n}_{\mathrm{wall}}$ to calculate a tangent direction for movement along the obstacle boundary:
+
+\begin{equation}
+    V_{\mathrm{follow\_edge}} = \mathbf{t} = \begin{bmatrix} 
+    -n_y \\
+    n_x
+    \end{bmatrix}, \label{eq:V3}
+\end{equation}
+where $\mathbf{n}_{\mathrm{wall}} = [n_x, n_y]^T$ is the normal vector perpendicular to the wall at the nearest point. The scaling factor $f_3(d_{\mathrm{wall}})$ depends on the perpendicular distance $d_{\mathrm{wall}}$ from agent to obstacle surface:
+
+\begin{equation}
+    f_3(d_{\mathrm{wall}}) = 
+    \begin{cases}
+    a_f (0.4 \mathbf{t} + 0.6 \mathbf{n}_{\mathrm{corr}}), & |d_{\mathrm{wall}}| > d_f \\
+    1.2 a_f \mathbf{t}, & |d_{\mathrm{wall}}| \leq d_f
+    \end{cases}, \label{eq:f3_scaling}
+\end{equation}
+where $\mathbf{t}$ is the tangent vector from Eq.~\eqref{eq:V3}, and $\mathbf{n}_{\mathrm{corr}} = -\text{sign}(d_{\mathrm{wall}}) \cdot \mathbf{n}_{\mathrm{wall}}$ is a correction vector that pushes the drone toward the desired wall distance.
+
+\subsection{Integrated Movement Control}
+
+Resulting control $\mathcal{M}_{i}$ combines active behaviors additively:
+
+\begin{equation}
+    \mathcal{M}_{i} = V_{\mathrm{movement}} = \begin{bmatrix} f_1 & f_2 & f_3 \end{bmatrix}
+    \begin{bmatrix} 
+    V_{\mathrm{move\_to\_destination}} \\
+    V_{\mathrm{obstacle\_avoidance}} \\
+    V_{\mathrm{follow\_edge}}
+    \end{bmatrix}, \label{eq:M_i_movement_controller}
+\end{equation}
+with weights dynamically adjusted by context (e.g., obstacle proximity). As shown in Eq.~\eqref{eq:ui_final}, this movement controller $\mathcal{M}_{i}$ combines with the formation controller $\mathcal{G}_{i}$ to produce the final control input, enabling simultaneous formation maintenance and navigation capabilities.
+
+\section{LLM Integrated High-Level Control}\label{sec5}
+This section details the high-level strategic layer of the dual MASS architecture, focusing on LLM agent integration and its role.
+
+\subsection{LLM-Agent Architecture}
+The LLM agent forms the high-level strategic control layer, complementing the drones' low-level reactive behaviors. A centralized LLM agent supervises the swarm, rather than per-drone LLMs (computationally infeasible). This centralized approach enhances efficiency and enables mission-level decisions, valuable for secure transport in contested environments. The architecture comprises four components:
+
+\begin{itemize}
+    \item \textit{Perception module} aggregating telemetry, communication, and environmental data.
+    \item \textit{Reasoning engine} processing swarm-wide information for strategic mission-aligned decisions.
+    \item \textit{Command generation component} translating high-level decisions into actionable control inputs.
+    \item \textit{Execution monitor} tracking command implementation and identifying adaptation needs.
+\end{itemize}
+
+This provides the LLM agent a global, real-time view of the swarm's context, enabling strategic planning and coordination in complex, dynamic environments such as secure transport missions.
+
+\subsection{Strategic Decision-Making and Control Override}
+The centralized LLM employs multi-step reasoning for strategic guidance, targeting objectives like area coverage, formation integrity, and threat avoidance. It receives a structured swarm state as shown in Fig.~\ref{fig:llm_prompt_response}.
+From this input, the LLM is prompted for tactical advice on escaping jamming or obstacles:
+
+
+\begin{figure*}[t]
+    \centerline{\includegraphics[width=0.99\linewidth]{fig/prompt.png}}
+    \caption{LLM tactical output and swarm state prompt (bottom right corner of the picture) in the simulation GUI. \nbl{Please generate a few nice simulation figures. The GUI can be shown as a separate figure.} }
+    \label{fig:llm_prompt_response}
+\end{figure*}
+
+\begin{tcolorbox}[
+  breakable,
+  colback=white!95!gray,
+  colframe=black,
+  title={System Prompt},
+  fonttitle=\bfseries,
+  coltitle=white,
+  sharp corners,
+  boxrule=0.4pt,
+  %label=system-prompt
+]
+\footnotesize\itshape
+You are a tactical advisor for a swarm of autonomous vehicles specializing in
+\textbf{ESCAPING JAMMING FIELDS} and \textbf{OBSTACLES}.
+
+\textbf{IMPORTANT CONTEXT:}
+\begin{itemize}[leftmargin=1.5em]
+  \item Communication quality ranges from 0 (no connection) to 1 (perfect quality)
+  \item Quality above 0.94 is considered "good" and below 0.94 is "poor"
+  \item Low-power jamming causes gradual degradation of communication quality
+  \item High-power jamming causes abrupt disconnection and agents return to base
+  \item \textbf{JAMMING FIELDS ARE YOUR PRIMARY CONCERN} - they must be escaped immediately
+  \item \textbf{OBSTACLES ARE YOUR SECONDARY CONCERN} - avoid them, but not at the expense of escaping jamming
+\end{itemize}
+
+\textbf{YOUR TASK:}
+\begin{enumerate}[leftmargin=1.5em]
+  \item Identify agents inside jamming fields (showing communication degradation)
+  \item Provide \textbf{PRECISE} directional instructions to escape jamming
+  \item Specify \textbf{EXACT} directions using:
+    \begin{itemize}
+      \item Cardinal: north, east, south, west
+      \item Ordinal: northeast, southeast, southwest, northwest
+      \item Secondary: north-northeast, east-northeast, etc.
+      \item Tertiary: north by northeast, northeast by north, etc.
+    \end{itemize}
+  \item Always prioritize \textbf{MOVING AWAY FROM JAMMING FIELDS} over formation
+  \item Suggest distances of 5-10 units for effective escape
+\end{enumerate}
+
+\textbf{FORMAT:} 
+\texttt{"Agent-1: Move 8 units north-northwest to escape jamming. Agent-2: Reposition 10 units west by southwest to exit interference field."}
+
+\textbf{REMEMBER:} Extract agents first. Maintain formation second.
+\end{tcolorbox}
+
+%In the current implementation, 
+The LLM agent analyzes network topology and signal metrics to identify degraded connectivity and potential jamming. To escape or navigate obstacles, it can direct swarm modifications, temporarily sacrificing optimal formation to re-establish communication and continue progress. A key feature is priority-based control: LLM commands selectively override or blend with vehicle-agent inputs based on criticality, communication thresholds, and positional analysis. The LLM also develops alternative strategies if primary routes are compromised, enabling adaptation. Algorithm~\ref{alg:llm_override_simplified} outlines this logic, integrating LLM guidance with autonomous low-level control for timely, context-appropriate interventions.
+
+\begin{algorithm}[tbh]
+  \caption{LLM Control Override Logic}
+  \label{alg:llm_override_expanded}
+  \begin{algorithmic}
+    \State $S \gets \Call{GetSwarmState}{}$ \Comment{Pos, comms, jam status}
+    \State $C_b \gets \Call{DefaultController}{S}$ \Comment{Form/behav control}
+    \State $C_f \gets C_b$ \Comment{Initialize final control}
+    
+    \If{$\mathrm{step} \bmod \Delta_t = 0$} \Comment{Check feedback interval}
+      \State $L_{\mathrm{out}} \gets \Call{RequestLLM}{S,P}$ \Comment{Async request}
+    \EndIf
+    
+    \If{$L_{\mathrm{out}}$ available}
+      \State $(C_{\ell}, A) \gets \Call{ParseLLM}{L_{\mathrm{out}}}$ \Comment{Extract controls}
+    \EndIf
+    
+    \State $(abn, sev) \gets \Call{CheckAbnormal}{S}$ \Comment{See Alg.~\ref{alg:abnormal_conditions}}
+    
+    \If{$abn$ \textbf{and} $C_{\ell}$ valid}
+      \For{each $i \in A$}
+        \State $s_i \gets \Call{GetSeverity}{i,S}$ \Comment{See Alg.~\ref{alg:agent_severity}}
+        \State $w_{\ell} \gets \min(0.95, 0.7 + 0.25 s_i)$
+        \State $w_b \gets 1 - w_{\ell}$
+        \State $C_f[i] \gets w_{\ell} C_{\ell}[i] + w_b C_b[i]$
+      \EndFor
+      \State \Call{ApplyAvoidance}{$C_f, S$} \Comment{$r=15$ units}
+    \EndIf
+    
+    \State \Call{ApplyControl}{$C_f$}
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[tb]
+  \caption{Abnormal Conditions Detection}
+  \label{alg:abnormal_conditions}
+  \begin{algorithmic}
+    \Function{CheckAbnormalConditions}{$S$}
+      \State $\mathrm{sev} \gets 0.0$
+      
+      \Comment{Jamming check}
+      \If{$\exists j: S.\mathrm{jam}[j] = \mathrm{true}$}
+        \State $n \gets \sum_j S.\mathrm{jam}[j]$
+        \State $\mathrm{sev} \gets \max(\mathrm{sev}, \min(1, n/N))$
+        \State \Return $(\mathrm{true}, \mathrm{sev})$
+      \EndIf
+      
+      \Comment{Comm quality check}
+      \State $Q \gets S.\mathrm{comm\_matrix}$
+      \If{$\exists (i,j): 0 < Q_{ij} < P_T$}
+        \State $n_{\mathrm{poor}} \gets |\{(i,j) : 0 < Q_{ij} < P_T\}|$
+        \State $n_{\mathrm{total}} \gets |\{(i,j) : Q_{ij} > 0\}|$
+        \State $\mathrm{sev} \gets \max(\mathrm{sev}, \min(1, n_{\mathrm{poor}}/n_{\mathrm{total}}))$
+        \State \Return $(\mathrm{true}, \mathrm{sev})$
+      \EndIf
+      
+      \Comment{Formation check}
+      \If{$J_n < 0.9$}
+        \State $\mathrm{sev} \gets \max(\mathrm{sev}, (0.9-J_n)/0.9)$
+        \State \Return $(\mathrm{true}, \mathrm{sev})$
+      \EndIf
+      
+      \State \Return $(\mathrm{false}, 0.0)$
+    \EndFunction
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[tb]
+  \caption{Agent-Specific Severity}
+  \label{alg:agent_severity}
+  \begin{algorithmic}
+    \Function{GetAgentSeverity}{$i, S$}
+      \Comment{Jamming check}
+      \If{$S.\mathrm{jam}[i] = \mathrm{true}$}
+        \If{$S.\mathrm{jam\_depth}$ exists}
+          \State \Return $S.\mathrm{jam\_depth}[i]$
+        \Else
+          \State \Return $0.5$
+        \EndIf
+      \EndIf
+      
+      \Comment{Comm check}
+      \State $Q_i \gets S.\mathrm{comm\_matrix}[i,:]$
+      \State $\mathrm{active} \gets \{j : Q_{ij} > 0\}$
+      
+      \If{$\exists j \in \mathrm{active} : Q_{ij} < P_T$}
+        \State $q_{\min} \gets \min_{j \in \mathrm{active}} Q_{ij}$
+        \State $\mathrm{sev} \gets (P_T - q_{\min})/P_T$
+        \State \Return $\min(1.0, \mathrm{sev})$
+      \EndIf
+      
+      \State \Return $0.0$
+    \EndFunction
+  \end{algorithmic}
+\end{algorithm}
+
+\subsection{LLM Command Generation and Application}
+LLM tactical advice is processed into structured commands specifying target agents, movement vectors, and priorities. The system translates these into low-level control modifications (adjustments to $\mathcal{M}_i$ in Eq.~\eqref{eq:ui_final}) for selected drones. Intervention occurs if critical thresholds are breached (e.g., severe communication degradation) or hazards require coordinated response. In such cases, the LLM supervises by issuing temporary behavior augmentations to affected agents. The LLM's strategic adjustments, by temporarily augmenting agent behaviors, ensure mission continuity, safety, and cybersecurity, especially if local behaviors are insufficient (e.g., escaping large jamming fields). This key override offers resilience. Once resolved, control reverts to standard low-level controllers.
+
+\section{Simulation Results and Analysis}\label{sec6}
+This section presents simulation results evaluating the dual MASS architecture's performance in obstacle navigation and jamming mitigation.
+
+\subsection{Experimental Setup}
+Simulations were conducted using Python and standard scientific libraries. The communication model parameters used $\alpha=1\times10^{-5}$, $\delta=2$, $v=3$, $r_0=5$, and $P_T=0.94$. For experimental repeatability, the swarm initialized at seven fixed positions: $[-5,4]$, $[-5,-9]$, $[0,-10]$, $[35,-14]$, $[68,-10]$, $[72,3]$, and $[72,-8]$. Other settings remained constant for fair comparison across varying jamming and obstacle scenarios.
+
+\subsection{Physical Obstacle Navigation}
+The swarm navigated multiple static obstacles towards a destination. Fig.~\ref{fig:test2_phys_obs} compares trajectories and communication with (right: b-1, b-2) and without (left: a-1, a-2) LLM guidance. With LLM aid, mission completion was 103.79s (438 steps), versus 133.57s (489 steps) without it. LLM guidance resulted in more direct paths and effective obstacle negotiation, reducing completion time and improving navigation efficiency. High average communication ($J_n \approx 0.9723$) was maintained post-convergence in both scenarios (Fig.~\ref{fig:test2_phys_obs} a-2, b-2). Thus, the LLM-guided approach significantly improved pathfinding and mission time in obstacle-rich environments while preserving excellent communication quality.
+
+\begin{figure}[tbp]
+  \centering
+  \includegraphics[width=0.95\linewidth]{fig/test2.png}
+  \caption{Comparison of navigation with (right: b-1, b-2) and without (left: a-1, a-2) LLM guidance.}
+  \label{fig:test2_phys_obs}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \begin{subfigure}[b]{0.96\linewidth}
+    \includegraphics[width=\linewidth]{fig/scene_group1.png}
+    \caption{a) $t=34\,s$, b) $t=42\,s$, c) $t=48\,s$, d) $t=52\,s$}
+    \label{fig:test3_jamming_seq1}
+  \end{subfigure}
+
+  \begin{subfigure}[b]{0.96\linewidth}
+    \includegraphics[width=\linewidth]{fig/scene_group2.png}
+    \caption{e) $t=59\,s$, f) $t=71\,s$, g) $t=81\,s$, h) $t=105\,s$}
+    \label{fig:test3_jamming_seq2}
+  \end{subfigure}
+
+  \begin{subfigure}[b]{0.96\linewidth}
+    \includegraphics[width=\linewidth]{fig/performance.png}
+    \caption{Performance metrics}
+    \label{fig:test3_performance}
+  \end{subfigure}
+  \caption{Swarm navigation through low-power jamming.}
+  \label{fig:test3_jamming_seq}
+\end{figure}
+
+\subsection{Low-Power Jamming Scenario Evaluation}
+This test involved a single low-power jamming field. Fig.~\ref{fig:test3_jamming_seq} illustrates swarm behavior over time. Initially, agents maintain formation. Upon encountering jamming, communication degrades (Fig.~\ref{fig:test3_jamming_seq1}); the LLM then guides affected agents out, sometimes by temporarily adjusting formation. The swarm reconfigured, continued to the destination (Fig.~\ref{fig:test3_jamming_seq2}), and completed the mission in 105.29s (408 steps).
+Fig.~\ref{fig:test3_performance} quantitatively shows system resilience. Average communication $J_n$ \cite{10500200} degraded significantly (from 0.97 to $\approx$0.91) as agents entered jamming ($t$=30-40s). After LLM intervention, communication recovered, with fluctuations during agent repositioning, before stabilizing at 0.97. Concurrently, average distance to destination $r_n$ decreased (from 40 to 26.37 units), indicating progress despite communication challenges. Temporary $r_n$ increases (40-50s) reflect LLM-directed tactical repositioning that prioritized communication recovery over path efficiency. This demonstrates the system's ability to adapt to communication disruption while maintaining operational effectiveness.
+
+\subsection{System-Wide Observations}
+Across scenarios with varying jamming, the dual MASS architecture consistently enabled the swarm to reach its destination. The LLM agent made critical interventions when reactive behaviors alone were insufficient for escaping complex jamming. Although communication fluctuated as drones entered or exited jamming fields, LLM-directed changes maintained connectivity for mission continuity. The LLM effectively overridden or augmented vehicle control based on communication and position, underscoring the value of integrated strategic guidance with reactive control in contested environments. The results affirm the system's potential for enhanced swarm resilience.
+
+\section{Discussion and Limitations}\label{sec7}
+
+While our results are promising, several limitations must be acknowledged that provide direction for future research. Our experiments were conducted in 2D simulations that cannot capture all aspects of real-world UAV operations, including factors such as 3D navigation complexities, wind effects, battery constraints, and realistic communication channel variations. The simulation environment, while comprehensive within its scope, represents a simplified version of the contested environments that UAVs would encounter in actual deployments.
+
+The reliance on a centralized LLM creates a potential single point of failure that could compromise system performance. While the dual-layer architecture provides some resilience through autonomous low-level controllers, loss of LLM guidance significantly degrades performance in complex scenarios requiring strategic coordination. Additionally, we assume that at least minimal communication with the LLM agent is maintained throughout operations. In scenarios with complete communication blackout, the system would rely entirely on pre-programmed behaviors, potentially limiting its effectiveness in novel threat situations.
+
+The LLM component requires significant computational resources and network connectivity, which may not be available in all operational environments. This constraint particularly affects deployment in remote areas or scenarios where communication infrastructure is compromised. Future research directions include extending the framework to 3D environments with realistic physics modeling, developing distributed LLM architectures for improved scalability and resilience, and testing against sophisticated adversarial strategies that could exploit system dependencies.
+
+\section{Conclusion}\label{sec8}
+This paper presented a dual Multi-Agent Swarm System (MASS) architecture for UAV swarms to enhance resilience in contested environments. The system combines low-level, behavior-based vehicle control with a centralized high-level strategic layer powered by a large language model (LLM). Through this integration, the architecture demonstrated robust performance in navigating complex scenarios involving physical obstacles and jamming-induced communication degradation. A central contribution of this work is the novel coupling of reactive swarm behaviors with LLM-driven strategic oversight. This enables the swarm to dynamically adapt its formation to prioritize communication reliability without compromising mission objectives. Additionally, the system features a priority-based override mechanism, allowing the LLM to selectively intervene when localized control policies fall short, ensuring continuity and coordination in high-risk conditions. Simulation results validated the effectiveness of the LLM agent in analyzing swarm-wide communication and positional data to deliver targeted interventions. These strategic decisions improved mission success rates and operational safety under adversarial conditions, highlighting the value of global situational awareness coupled with decentralized execution. Furthermore, the concepts developed in this work have been implemented in the open-source Swarm Squad platform\footnote{\href{https://github.com/Swarm-Squad/Swarm-Squad-Ep1}{https://github.com/Swarm-Squad/Swarm-Squad-Ep1}}, which supports continued research into secure and cyber-resilient UAV coordination. This platform is especially relevant for advancing technologies in transportation security and other mission-critical domains where autonomous aerial systems must operate under uncertainty and threat.
+
+\bibliographystyle{IEEEtran}
+\bibliography{reference}
+
+\end{document}
